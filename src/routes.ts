@@ -14,19 +14,19 @@ export function setupRoutes(app: Express) {
     // POST /monitor-account
     //@ts-ignore
     app.post('/monitor-account', async (req: Request, res: Response) => {
-        const { address, telegramUsername, intervalMs } = req.body;
+        const { address, chatId, intervalMs } = req.body;
 
         if (!address) {
             return res.status(400).json({ error: 'Address is required' });
         }
 
-        if (!telegramUsername) {
-            return res.status(400).json({ error: 'Telegram username is required' });
+        if (!chatId) {
+            return res.status(400).json({ error: 'Chat ID is required' });
         }
 
         const vault = getVault(new PublicKey(address));
         try {
-            await monitoringService.startMonitoring(vault.toBase58(), telegramUsername, intervalMs);
+            await monitoringService.startMonitoring(vault.toBase58(), chatId, intervalMs);
             res.status(200).json({
                 status: 'success',
                 message: `Started monitoring address ${address}`,

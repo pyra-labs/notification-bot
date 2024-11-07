@@ -8,6 +8,17 @@ export const bot = new Bot(TG_API_KEY || '');
 
 bot.command("start", (ctx) => ctx.reply("Welcome! Please send me your wallet address so I can monitor your Quartz account health!"));
 
+bot.command("stop", (ctx) => {
+    const walletAddress = monitoringService.getWalletAddressByChatId(ctx.chat.id);
+    
+    if (walletAddress) {
+        monitoringService.stopMonitoring(walletAddress);
+        ctx.reply("I'll stop monitoring your account health now!");
+    } else {
+        ctx.reply("I'm not currently monitoring any accounts for you.");
+    }
+});
+
 bot.hears(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, async (ctx) => {
     ctx.reply("Thanks! I'll start monitoring your Quartz account health, if it ever goes down I'll let you know!")
 

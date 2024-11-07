@@ -43,7 +43,7 @@ export class AccountMonitoringService {
             });
 
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
-            await bot.api.sendMessage(chatId, `Started monitoring address ${address} for health changes`);
+            await bot.api.sendMessage(chatId, `Started monitoring your Quartz account for health changes! Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
             //this.events.emit('monitoring:started', { address, telegramUsername });
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -60,11 +60,20 @@ export class AccountMonitoringService {
         clearInterval(monitoring.interval);
         
         // Remove from monitored accounts
-        await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring address ${address}`);
+        await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring your Quartz account health!`);
         this.monitoredAccounts.delete(address);    }
 
     getMonitoredAccounts(): string[] {
         return Array.from(this.monitoredAccounts.keys());
+    }
+
+    getWalletAddressByChatId(chatId: number): string | undefined {
+        for (const [walletAddress, data] of this.monitoredAccounts.entries()) {
+            if (data.chatId === chatId) {
+                return walletAddress;
+            }
+        }
+        return undefined;
     }
 
     private async _checkHealth(address: string): Promise<void> {
