@@ -93,7 +93,7 @@ export class AccountMonitoringService {
                 console.log(`Health changed for address ${address}: ${healthChange}`);
                 await bot.api.sendMessage(monitoring.chatId, `Your account health changed by ${healthChange > 0 ? '+' : ''}${healthChange}% ${healthChange > 0 ? '💫' : '😬'}`);
 
-                if (currentHealth < 50) { // Critical health threshold
+                if (currentHealth < 25) { // Critical health threshold
                     console.log(`Health critical for address ${address}: ${currentHealth}`);
                     await bot.api.sendMessage(monitoring.chatId, `Your account health is critical: ${currentHealth}% Please add more collateral to your account to avoid liquidation!`);
                 }
