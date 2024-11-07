@@ -1,27 +1,33 @@
-import { TG_API_KEY } from "../config.js";
+import { Bot, GrammyError, HttpError } from "grammy";
+import { monitoringService } from "../index.js";
+import { getVault } from "../utils/helpers.js";
+import { PublicKey } from "@drift-labs/sdk";
+import { TG_API_KEY } from "../utils/config.js";
 
-export async function sendTelegramMessage(chatId: string, message: string) {
-    try {
-        const response = await fetch(`https://api.telegram.org/bot${TG_API_KEY}/sendMessage`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'HTML'
-            })
-        });
+export const bot = new Bot(TG_API_KEY || '');
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Telegram API error: ${JSON.stringify(errorData)}`);
-        }
+bot.command("start", (ctx) => ctx.reply("Welcome! Please send me your wallet address so I can monitor your Quartz account health!"));
 
-        return await response.json();
-    } catch (error) {
-        console.error('Error sending telegram message:', error);
-        throw error;
+bot.hears(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, async (ctx) => {
+    ctx.reply("Thanks! I'll start monitoring your Quartz account health, if it ever goes down I'll let you know!")
+
+    if (ctx.message && ctx.message.text) {
+        const vault = getVault(new PublicKey(ctx.message.text));
+        await monitoringService.startMonitoring(vault.toBase58(), ctx.chatId);
+    } else {
+        ctx.reply("I couldn't find your wallet address in the message. Please try again.")
     }
-}
+});
+
+bot.catch((err) => {
+    const ctx = err.ctx;
+    console.error(`Error while handling update ${ctx.update.update_id}:`);
+    const e = err.error;
+    if (e instanceof GrammyError) {
+        console.error("Error in request:", e.description);
+    } else if (e instanceof HttpError) {
+        console.error("Could not contact Telegram:", e);
+    } else {
+        console.error("Unknown error:", e);
+    }
+});

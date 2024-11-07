@@ -1,10 +1,10 @@
 import { DriftClientManager, getDriftHealth } from '../api/driftClientManager.js';
-import { sendTelegramMessage } from '../api/telegram.js';
+import { bot } from '../api/telegram.js';
 export class AccountMonitoringService {
     private monitoredAccounts: Map<string, {
         interval: NodeJS.Timeout;
         lastHealth: number;
-        telegramUsername: string;
+        chatId: number;
     }>;
     private driftClientManager: DriftClientManager;
 
@@ -15,7 +15,7 @@ export class AccountMonitoringService {
 
     async startMonitoring(
         address: string,
-        telegramUsername: string,
+        chatId: number,
         intervalMs: number = 60000
     ): Promise<void> {
         if (this.monitoredAccounts.has(address)) {
@@ -39,11 +39,11 @@ export class AccountMonitoringService {
             this.monitoredAccounts.set(address, {
                 interval,
                 lastHealth: initialHealth,
-                telegramUsername
+                chatId: chatId
             });
 
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
-            await sendTelegramMessage(telegramUsername, `Started monitoring address ${address} for health changes`);
+            await bot.api.sendMessage(chatId, `Started monitoring address ${address} for health changes`);
             //this.events.emit('monitoring:started', { address, telegramUsername });
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -60,7 +60,7 @@ export class AccountMonitoringService {
         clearInterval(monitoring.interval);
         
         // Remove from monitored accounts
-        await sendTelegramMessage(monitoring.telegramUsername, `Stopped monitoring address ${address}`);
+        await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring address ${address}`);
         this.monitoredAccounts.delete(address);    }
 
     getMonitoredAccounts(): string[] {
@@ -76,25 +76,17 @@ export class AccountMonitoringService {
         try {
             const currentHealth = await getDriftHealth(address, this.driftClientManager);
             const healthChange = currentHealth - monitoring.lastHealth;
+
+            console.log(`Health changed for address ${address}: ${healthChange}`);
             
             // Emit events based on health changes
             if (Math.abs(healthChange) >= 10) { // 10% change threshold
                 console.log(`Health changed for address ${address}: ${healthChange}`);
-                await sendTelegramMessage(monitoring.telegramUsername, `Health changed for address ${address}: ${healthChange}`);
-                //this.events.emit('health:changed', {
-                //    address,
-                //    previousHealth: monitoring.lastHealth,
-                //    currentHealth,
-                //    change: healthChange
-                //});
+                await bot.api.sendMessage(monitoring.chatId, `Your account health changed by ${healthChange > 0 ? '+' : ''}${healthChange}% ${healthChange > 0 ? '💫' : '😬'}`);
 
                 if (currentHealth < 50) { // Critical health threshold
                     console.log(`Health critical for address ${address}: ${currentHealth}`);
-                    await sendTelegramMessage(monitoring.telegramUsername, `Health critical for address ${address}: ${currentHealth}`);
-                    //this.events.emit('health:critical', {
-                    //    address,
-                    //    health: currentHealth
-                    //});
+                    await bot.api.sendMessage(monitoring.chatId, `Your account health is critical: ${currentHealth}% Please add more collateral to your account to avoid liquidation!`);
                 }
             }
 
