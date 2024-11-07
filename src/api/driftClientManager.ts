@@ -2,18 +2,13 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Wallet, DriftClient, User as DriftUser } from "@drift-labs/sdk";
 import { HELIUS_RPC_URL, LOCAL_SECRET } from "../utils/config.js";
 
-export async function getDriftHealth(address: string, driftClientManager: DriftClientManager) {
-    const health = await driftClientManager.getUserHealth(address);
-    return health;
-}
-
 export class DriftClientManager {
     private driftClient!: DriftClient;
     private connection!: Connection;
     private wallet!: Wallet;
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 10;
-    private baseReconnectDelay: number = 1000; // 1 second
+    private baseReconnectDelay: number = 1000;
 
     constructor() {
         this.initializeDriftClient();

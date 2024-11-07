@@ -1,4 +1,4 @@
-import { DriftClientManager, getDriftHealth } from '../api/driftClientManager.js';
+import { DriftClientManager } from '../api/driftClientManager.js';
 import { bot } from '../api/telegram.js';
 export class AccountMonitoringService {
     private monitoredAccounts: Map<string, {
@@ -24,7 +24,7 @@ export class AccountMonitoringService {
 
         try {
             // Get initial health
-            const initialHealth = await getDriftHealth(address, this.driftClientManager);
+            const initialHealth = await this.driftClientManager.getUserHealth(address);
             
             // Create interval to check health periodically
             const interval = setInterval(async () => {
@@ -43,7 +43,7 @@ export class AccountMonitoringService {
             });
 
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
-            await bot.api.sendMessage(chatId, `Started monitoring your Quartz account for health changes! Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
+            await bot.api.sendMessage(chatId, `Monitoring started! Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
             //this.events.emit('monitoring:started', { address, telegramUsername });
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -83,20 +83,16 @@ export class AccountMonitoringService {
         }
 
         try {
-            const currentHealth = await getDriftHealth(address, this.driftClientManager);
-            const healthChange = currentHealth - monitoring.lastHealth;
-
-            console.log(`Health changed for address ${address}: ${healthChange}`);
+            const currentHealth = await this.driftClientManager.getUserHealth(address);
             
-            // Emit events based on health changes
-            if (Math.abs(healthChange) >= 10) { // 10% change threshold
-                console.log(`Health changed for address ${address}: ${healthChange}`);
-                await bot.api.sendMessage(monitoring.chatId, `Your account health changed by ${healthChange > 0 ? '+' : ''}${healthChange}% ${healthChange > 0 ? '💫' : '😬'}`);
+            if (monitoring.lastHealth > 25 && currentHealth <= 25) {
+                console.log(`Health warning for address ${address}: ${currentHealth}%`);
+                await bot.api.sendMessage(monitoring.chatId, `Your account health has dropped to ${currentHealth}%. Please add more collateral to your account to avoid liquidation!`);
+            }
 
-                if (currentHealth < 25) { // Critical health threshold
-                    console.log(`Health critical for address ${address}: ${currentHealth}`);
-                    await bot.api.sendMessage(monitoring.chatId, `Your account health is critical: ${currentHealth}% Please add more collateral to your account to avoid liquidation!`);
-                }
+            if (monitoring.lastHealth > 10 && currentHealth <= 10) {
+                console.log(`Health warning for address ${address}: ${currentHealth}%`);
+                await bot.api.sendMessage(monitoring.chatId, `🚨 Your account health has dropped to ${currentHealth}%. Add more collateral to your account now to avoid liquidation!`);
             }
 
             // Update stored health

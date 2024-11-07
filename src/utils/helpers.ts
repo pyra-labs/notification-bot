@@ -5,7 +5,6 @@ export function bnToDecimal(bn: BN, decimalPlaces: number): number {
     const decimalFactor = Math.pow(10, decimalPlaces);
     return bn.toNumber() / decimalFactor;
 }
-  
 
 export const getVault = (owner: PublicKey) => {
     const [vault] = PublicKey.findProgramAddressSync(
