@@ -1,12 +1,14 @@
 import { PublicKey } from '@drift-labs/sdk';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({
+    path: process.env.NODE_ENV === 'development' ? '.dev.env' : '.env',
+});
+
 
 export const LOCAL_SECRET = process.env.SECRET;
 export const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL;
-//export const TG_API_KEY = process.env.TG_API_KEY;
-export const TG_API_KEY = process.env.TG_DEV_API_KEY;
+export const TG_API_KEY = process.env.TG_API_KEY;
 export const PORT = process.env.PORT || 3000;
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || "";

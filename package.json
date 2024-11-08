@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "NODE_ENV=development tsx src/index.ts",
     "start": "tsc -p tsconfig.json && node build/index.js"
   },
   "keywords": [],
