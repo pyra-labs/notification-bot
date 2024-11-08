@@ -8,8 +8,8 @@ export const bot = new Bot(TG_API_KEY || '');
 
 bot.command("start", (ctx) => ctx.reply("Hey! Please send me your wallet address so I can monitor your Quartz account health!"));
 
-bot.command("stop", (ctx) => {
-    const walletAddress = monitoringService.getWalletAddressByChatId(ctx.chat.id);
+bot.command("stop", async (ctx) => {
+    const walletAddress = await monitoringService.getWalletAddressByChatId(ctx.chat.id);
     
     if (walletAddress) {
         monitoringService.stopMonitoring(walletAddress);

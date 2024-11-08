@@ -5,8 +5,12 @@ dotenv.config();
 
 export const LOCAL_SECRET = process.env.SECRET;
 export const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL;
-export const TG_API_KEY = process.env.TG_API_KEY;
+//export const TG_API_KEY = process.env.TG_API_KEY;
+export const TG_API_KEY = process.env.TG_DEV_API_KEY;
 export const PORT = process.env.PORT || 3000;
+
+export const SUPABASE_URL = process.env.SUPABASE_URL || "";
+export const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
 
 export const DRIFT_MARKET_INDEX_USDC = 0;
 export const DRIFT_MARKET_INDEX_SOL = 1;
