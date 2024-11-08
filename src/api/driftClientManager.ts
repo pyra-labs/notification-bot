@@ -58,11 +58,16 @@ export class DriftClientManager {
         return this.initializationPromise;
     }
 
-    public async getUserHealth(address: string) {
+    public async getUserHealth(address: string): Promise<number | any> {
         await this.waitForInitialization();
         await this.emulateAccount(new PublicKey(address));
-        const user = this.getUser();
-        return user.getHealth();
+        try {
+            const user = this.getUser();
+            return user.getHealth();
+        } catch (error: any) {
+            console.error(`Error getting user health for ${address}: ${error}`);
+            return error;
+        }
     }
 
     public async getSpotMarketAccount(marketIndex: number) {
