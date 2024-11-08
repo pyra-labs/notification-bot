@@ -24,7 +24,7 @@ bot.hears(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, async (ctx) => {
 
     if (ctx.message && ctx.message.text) {
         const vault = getVault(new PublicKey(ctx.message.text));
-        await monitoringService.startMonitoring(vault.toBase58(), ctx.chatId);
+        await monitoringService.startMonitoring(ctx.message.text, vault.toBase58(), ctx.chatId);
     } else {
         ctx.reply("I couldn't find your wallet address in the message. Please try again.")
     }

@@ -16,6 +16,7 @@ export type Database = {
           created_at: string | null
           last_health: number
           updated_at: string | null
+          vault_address: string
         }
         Insert: {
           address: string
@@ -23,6 +24,7 @@ export type Database = {
           created_at?: string | null
           last_health: number
           updated_at?: string | null
+          vault_address: string
         }
         Update: {
           address?: string
@@ -30,6 +32,7 @@ export type Database = {
           created_at?: string | null
           last_health?: number
           updated_at?: string | null
+          vault_address?: string
         }
         Relationships: []
       }
