@@ -9,9 +9,11 @@ export class DriftClientManager {
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 10;
     private baseReconnectDelay: number = 1000;
+    private initialized: boolean = false;
+    private initializationPromise: Promise<void>;
 
     constructor() {
-        this.initializeDriftClient();
+        this.initializationPromise = this.initializeDriftClient();
     }
 
     private async initializeDriftClient() {
@@ -30,10 +32,12 @@ export class DriftClientManager {
 
             await this.driftClient.subscribe();
             console.log('DriftClient initialized and subscribed successfully');
-            this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+            this.reconnectAttempts = 0;
+            this.initialized = true;
         } catch (error) {
             console.error('Error initializing DriftClient:', error);
             this.handleReconnection();
+            throw error;
         }
     }
 
@@ -50,7 +54,12 @@ export class DriftClientManager {
         }
     }
 
+    public async waitForInitialization(): Promise<void> {
+        return this.initializationPromise;
+    }
+
     public async getUserHealth(address: string) {
+        await this.waitForInitialization();
         await this.emulateAccount(new PublicKey(address));
         const user = this.getUser();
         return user.getHealth();

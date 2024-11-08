@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "NODE_ENV=development tsx src/index.ts",
     "start": "tsc -p tsconfig.json && node build/index.js"
   },
+  "type": "module",
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -19,6 +20,7 @@
   "dependencies": {
     "@drift-labs/sdk": "^2.100.0-beta.5",
     "@solana/web3.js": "^1.95.4",
+    "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
