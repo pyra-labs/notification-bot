@@ -60,7 +60,7 @@ CREATE TRIGGER update_monitored_accounts_updated_at
 
 8. Click run
 
-10. Go to Home, find the project URL and API key, add them into the .env file:
+10. Go to Home, find the project URL and API key, and add them into the .env file:
 
 ```
 # Replace the values with your actual URL and API key
@@ -68,7 +68,7 @@ SUPABASE_URL=https://aaaaaaaaaa.supabase.co
 SUPABASE_KEY=000000000000000000000000000000
 ```
 
-10. (Optional) You can also add a private Solana RPC url but adding it to the .env file:
+10. (Optional) You can also add a private Solana RPC URL by adding it to the .env file:
 ```
 # Replace with your actual URL
 RPC_URL=https://api.mainnet-beta.solana.com 
