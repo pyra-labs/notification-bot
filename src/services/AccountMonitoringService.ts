@@ -144,6 +144,8 @@ export class AccountMonitoringService {
                 lastHealth: currentHealth
             });
 
+            if (currentHealth === monitoring.lastHealth) return;
+
             console.log(`Updating health for address ${address} to ${currentHealth}`);
             const { error } = await this.supabase
                 .from('monitored_accounts')
