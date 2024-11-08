@@ -74,4 +74,12 @@ SUPABASE_KEY=000000000000000000000000000000
 RPC_URL=https://api.mainnet-beta.solana.com 
 ```
 
-11. Run the server with `npm run start`
+11. A full .env file might look like this:
+```
+TG_API_KEY=0000000000:AAAAAAAAA_AAAAAAA-aaaaaaaaaaaaaaaaa
+SUPABASE_URL=https://aaaaaaaaaa.supabase.co
+SUPABASE_KEY=000000000000000000000000000000
+RPC_URL=https://api.mainnet-beta.solana.com 
+```
+
+12. Run the server with `npm run start`

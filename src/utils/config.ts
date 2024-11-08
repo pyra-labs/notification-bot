@@ -3,8 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const LOCAL_SECRET = process.env.SECRET;
-export const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL;
+export const RPC_URL = process.env.RPC_URL;
 export const TG_API_KEY = process.env.TG_API_KEY;
 export const PORT = process.env.PORT || 3000;
 

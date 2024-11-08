@@ -1,6 +1,6 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Wallet, DriftClient, User as DriftUser } from "@drift-labs/sdk";
-import { HELIUS_RPC_URL, LOCAL_SECRET } from "../utils/config.js";
+import { RPC_URL } from "../utils/config.js";
 
 export class DriftClientManager {
     private driftClient!: DriftClient;
@@ -16,13 +16,8 @@ export class DriftClientManager {
 
     private async initializeDriftClient() {
         try {
-            this.connection = new Connection(HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com');
- 
-            const secret = JSON.parse(LOCAL_SECRET ?? "") as number[]
-            const secretKey = Uint8Array.from(secret)
-            const keypair = Keypair.fromSecretKey(secretKey)
-
-            this.wallet = new Wallet(keypair);
+            this.connection = new Connection(RPC_URL || 'https://api.mainnet-beta.solana.com');
+            this.wallet = new Wallet(Keypair.generate());
 
             console.log("wallet created with keypair:", this.wallet.publicKey.toBase58());
 
