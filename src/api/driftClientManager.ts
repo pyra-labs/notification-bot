@@ -59,9 +59,9 @@ export class DriftClientManager {
     }
 
     public async getUserHealth(address: string): Promise<number | any> {
-        await this.waitForInitialization();
-        await this.emulateAccount(new PublicKey(address));
         try {
+            await this.waitForInitialization();
+            await this.emulateAccount(new PublicKey(address));
             const user = this.getUser();
             return user.getHealth();
         } catch (error: any) {
