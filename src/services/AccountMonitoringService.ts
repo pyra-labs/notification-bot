@@ -56,7 +56,6 @@ export class AccountMonitoringService {
 
         try {
             // Get initial health
-            console.log(`Getting initial health for user address ${address}, vault address: ${vaultAddress}`);
             const initialHealth = await this.driftClientManager.getUserHealth(vaultAddress);
 
             console.log(`Initial health for user address ${address}, vault address: ${vaultAddress}: ${initialHealth}`);
