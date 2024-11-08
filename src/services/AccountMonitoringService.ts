@@ -175,7 +175,7 @@ export class AccountMonitoringService {
             .select('address');
 
         if (error || !data) return [];
-        return data.map(account => account.address);
+        return data.map((account: any) => account.address);
     }
 
 
