@@ -66,9 +66,9 @@ export function setupRoutes(app: Express) {
     });
 
     // GET /monitored-accounts
-    app.get('/monitored-accounts', (req: Request, res: Response) => {
+    app.get('/monitored-accounts', async (req: Request, res: Response) => {
         try {
-            const accounts = monitoringService.getMonitoredAccounts();
+            const accounts = await monitoringService.getMonitoredAccounts();
             res.status(200).json({ accounts });
         } catch (error: any) {
             console.error('Error fetching monitored accounts:', error);

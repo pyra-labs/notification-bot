@@ -57,6 +57,10 @@ export class AccountMonitoringService {
         try {
             // Get initial health
             const initialHealth = await this.driftClientManager.getUserHealth(vaultAddress);
+            if (initialHealth instanceof Error || typeof initialHealth !== 'number') {
+                await bot.api.sendMessage(chatId, `This public key is not a valid Quartz account! Please send a valid Quartz account address to monitor.`);
+                return;
+            };
 
             console.log(`Initial health for user address ${address}, vault address: ${vaultAddress}: ${initialHealth}`);
 
@@ -140,6 +144,9 @@ export class AccountMonitoringService {
                 lastHealth: currentHealth
             });
 
+            if (currentHealth === monitoring.lastHealth) return;
+
+            console.log(`Updating health for address ${address} to ${currentHealth}`);
             const { error } = await this.supabase
                 .from('monitored_accounts')
                 .update({ last_health: currentHealth })
@@ -202,7 +209,7 @@ export class AccountMonitoringService {
                     .eq('address', address);
                 return "existing";
             }
-    
+
             await this.supabase
                 .from('monitored_accounts')
                 .insert({
