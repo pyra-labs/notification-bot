@@ -13,7 +13,6 @@ bot.command("stop", async (ctx) => {
     
     if (walletAddress) {
         monitoringService.stopMonitoring(walletAddress);
-        ctx.reply("I'll stop monitoring your account health now!");
     } else {
         ctx.reply("I'm not currently monitoring any accounts for you.");
     }

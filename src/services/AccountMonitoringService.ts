@@ -88,6 +88,7 @@ export class AccountMonitoringService {
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
             if (result == 'new') {
                 await bot.api.sendMessage(chatId, `I've started monitoring your Quartz account health! I'll send you a message if it drops below 25%, and another if it drops below 10%. Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
+                await bot.api.sendMessage(chatId, `Send /stop to stop receiving alerts.`)
             }
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -113,7 +114,7 @@ export class AccountMonitoringService {
             clearInterval(monitoring.interval);
 
             // Remove from monitored accounts
-            await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring your Quartz account health!`);
+            await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring your Quartz account health.`);
             this.monitoredAccounts.delete(address);
         } catch (error: any) {
             throw new Error(`Failed to stop monitoring address ${address}: ${error.message}`);
