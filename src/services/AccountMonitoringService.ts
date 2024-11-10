@@ -4,6 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_KEY } from '../utils/config.js';
 import { SUPABASE_URL } from '../utils/config.js';
 import { Database } from '../utils/database.types.js';
+import { getDisplayWalletAddress } from '../utils/helpers.js';
 
 export class AccountMonitoringService {
     private monitoredAccounts: Map<string, {
@@ -58,7 +59,7 @@ export class AccountMonitoringService {
             // Get initial health
             const initialHealth = await this.driftClientManager.getUserHealth(vaultAddress);
             if (initialHealth instanceof Error || typeof initialHealth !== 'number') {
-                await bot.api.sendMessage(chatId, `This public key is not a valid Quartz account! Please send a valid Quartz account address to monitor.`);
+                await bot.api.sendMessage(chatId, `I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account.`);
                 return;
             };
 
@@ -86,7 +87,7 @@ export class AccountMonitoringService {
 
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
             if (result == 'new') {
-                await bot.api.sendMessage(chatId, `Monitoring started! Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
+                await bot.api.sendMessage(chatId, `I've started monitoring your Quartz account health! I'll send you a message if it drops below 25%, and another if it drops below 10%. Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
             }
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -128,14 +129,16 @@ export class AccountMonitoringService {
         try {
             const currentHealth = await this.driftClientManager.getUserHealth(vaultAddress);
 
+            const walletDisplayAddress = getDisplayWalletAddress(address);
+            
             if (monitoring.lastHealth > 25 && currentHealth <= 25) {
                 console.log(`Health warning for address ${address}: ${currentHealth}%`);
-                await bot.api.sendMessage(monitoring.chatId, `Your account health has dropped to ${currentHealth}%. Please add more collateral to your account to avoid liquidation!`);
+                await bot.api.sendMessage(monitoring.chatId, `Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid liquidation!`);
             }
 
             if (monitoring.lastHealth > 10 && currentHealth <= 10) {
                 console.log(`Health warning for address ${address}: ${currentHealth}%`);
-                await bot.api.sendMessage(monitoring.chatId, `🚨 Your account health has dropped to ${currentHealth}%. Add more collateral to your account now to avoid liquidation!`);
+                await bot.api.sendMessage(monitoring.chatId, `🚨 Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Add more collateral to your account now to avoid liquidation!`);
             }
 
             // Update stored health in both memory and database

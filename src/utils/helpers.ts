@@ -13,3 +13,7 @@ export const getVault = (owner: PublicKey) => {
     )
     return vault;
 }
+
+export function getDisplayWalletAddress(address: string) {
+    return `(${address.slice(0, 4)}...${address.slice(-4)})` 
+}

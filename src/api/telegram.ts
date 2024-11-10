@@ -20,7 +20,7 @@ bot.command("stop", async (ctx) => {
 });
 
 bot.hears(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, async (ctx) => {
-    ctx.reply("Thanks! I'll start monitoring your Quartz account health. I'll send you a message if it drops below 25%, and another if it drops below 10%.")
+    ctx.reply("Checking wallet address...")
 
     if (ctx.message && ctx.message.text) {
         const vault = getVault(new PublicKey(ctx.message.text));
@@ -34,11 +34,11 @@ bot.on("message:text", async (ctx) => {
     const walletRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
     
     if (!walletRegex.test(ctx.message.text)) {
-        ctx.reply("Oh wait!! That doesn't look like a valid wallet address. Please send me a valid Solana wallet address for me to start monitoring your account health 🙏");
+        ctx.reply("That doesn't look like a valid wallet address... Please send me a valid Solana wallet address for me to start monitoring your account health.");
         return;
     }
     
-    ctx.reply("Thanks! I'll start monitoring your Quartz account health. I'll send you a message if it drops below 25%, and another if it drops below 10%.");
+    ctx.reply("Checking wallet address...");
 
     const vault = getVault(new PublicKey(ctx.message.text));
     await monitoringService.startMonitoring(ctx.message.text, vault.toBase58(), ctx.chat.id);
