@@ -1,14 +1,13 @@
-import express from 'express';
-import { json } from 'express';
-import { DriftClientManager } from './api/driftClientManager.js';
-import { setupRoutes } from './routes.js';
-import NodeCache from 'node-cache';
-import { bot } from './api/telegram.js';
-import { AccountMonitoringService } from './services/AccountMonitoringService.js';
-import { PORT } from './utils/config.js';
+import express, { json } from "express";
+import NodeCache from "node-cache";
+import { DriftClientManager } from "./api/driftClientManager.js";
+import { bot } from "./api/telegram.js";
+import appConfig from "./config/config.js";
+import { setupRoutes } from "./routes.js";
+import { AccountMonitoringService } from "./services/AccountMonitoringService.js";
 
 const app = express();
-const port = PORT;
+const port = appConfig.port;
 
 // Configure middleware
 app.use(json());
@@ -24,5 +23,5 @@ bot.start();
 setupRoutes(app);
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+	console.log(`Server is running on port ${port}`);
 });

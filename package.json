@@ -1,31 +1,57 @@
 {
-  "name": "account-watcher",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "dev": "NODE_ENV=development tsx src/index.ts",
-    "start": "tsc -p tsconfig.json && node build/index.js"
-  },
-  "type": "module",
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.7.8",
-    "tsx": "^4.19.1",
-    "typescript": "^5.6.3"
-  },
-  "dependencies": {
-    "@drift-labs/sdk": "^2.100.0-beta.5",
-    "@solana/web3.js": "^1.95.4",
-    "@supabase/supabase-js": "^2.46.1",
-    "@types/ws": "^8.5.10",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.1",
-    "grammy": "^1.31.0",
-    "node-cache": "^5.1.2",
-    "ws": "^8.16.0"
-  }
+	"name": "account-watcher",
+	"version": "1.0.0",
+	"main": "index.js",
+	"scripts": {
+		"build": "tsc",
+		"dev": "NODE_ENV=development tsx src/index.ts",
+		"start": "tsc -p tsconfig.json && node build/index.js",
+		"lint": "biome lint .",
+		"format:check:staged": "lint-staged",
+		"format:check": "biome format .",
+		"format:write": "biome format . --write",
+		"prepare": "husky install",
+		"test": "vitest run --pool=forks"
+	},
+	"type": "module",
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"devDependencies": {
+		"@biomejs/biome": "^1.8.3",
+		"@types/express": "^5.0.0",
+		"@types/node": "^22.7.8",
+		"husky": "7.0.0",
+		"lint-staged": "^12.3.4",
+		"stylelint": "^14.5.3",
+		"stylelint-config-prettier": "^9.0.3",
+		"stylelint-config-recommended": "^7.0.0",
+		"stylelint-config-standard": "^25.0.0",
+		"stylelint-config-styled-components": "^0.1.1",
+		"tsx": "^4.19.1",
+		"typescript": "^5.6.3",
+		"vitest": "1.4.0"
+	},
+	"dependencies": {
+		"@drift-labs/sdk": "^2.100.0-beta.5",
+		"@solana/web3.js": "^1.95.4",
+		"@supabase/supabase-js": "^2.46.1",
+		"@types/ws": "^8.5.10",
+		"dotenv": "^16.4.5",
+		"express": "^4.21.1",
+		"grammy": "^1.31.0",
+		"node-cache": "^5.1.2",
+		"tslib": "^2.8.1",
+		"ws": "^8.16.0",
+		"zod": "^3.22.3"
+	},
+	"engines": {
+		"node": ">=18.20.0"
+	},
+	"volta": {
+		"node": "20.17.0",
+		"pnpm": "9.12.1"
+	},
+	"packageManager": "pnpm@9.13.1+sha512.5ac37545851c55ec58521b6c285db6f848f93ca70889beb4145f5b40fe234e4ea4faee4dad12ac5c139e494374c65d9c3a6ec9a25954378fa286a250e68d2f20"
 }

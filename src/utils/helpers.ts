@@ -1,19 +1,16 @@
 import { BN, PublicKey } from "@drift-labs/sdk";
-import { FUNDS_PROGRAM_ID } from "./config.js";
+import { FUNDS_PROGRAM_ID } from "../config/constants.js";
 
 export function bnToDecimal(bn: BN, decimalPlaces: number): number {
-    const decimalFactor = Math.pow(10, decimalPlaces);
-    return bn.toNumber() / decimalFactor;
+	const decimalFactor = Math.pow(10, decimalPlaces);
+	return bn.toNumber() / decimalFactor;
 }
 
 export const getVault = (owner: PublicKey) => {
-    const [vault] = PublicKey.findProgramAddressSync(
-        [Buffer.from("vault"), owner.toBuffer()],
-        new PublicKey(FUNDS_PROGRAM_ID)
-    )
-    return vault;
-}
+	const [vault] = PublicKey.findProgramAddressSync([Buffer.from("vault"), owner.toBuffer()], new PublicKey(FUNDS_PROGRAM_ID));
+	return vault;
+};
 
 export function getDisplayWalletAddress(address: string) {
-    return `(${address.slice(0, 4)}...${address.slice(-4)})` 
+	return `(${address.slice(0, 4)}...${address.slice(-4)})`;
 }
