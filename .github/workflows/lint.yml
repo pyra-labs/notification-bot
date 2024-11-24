@@ -12,6 +12,7 @@ on:
       - develop
       - main
       - master
+      - quartz-labs:main
 
 jobs:
   eslint:
