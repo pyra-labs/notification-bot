@@ -11,7 +11,7 @@ import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/h
 import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY } from "./config/constants.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD } from "./config/constants.js";
 
 export class HealthMonitorBot extends AppLogger {
     public api: express.Application;
@@ -27,6 +27,8 @@ export class HealthMonitorBot extends AppLogger {
     private monitoredAccounts: Map<string, {
         lastHealth: number;
         chatId: number;
+        firstThreshold: boolean;
+        secondThreshold: boolean;
     }>;
     private loadedAccountsPromise: Promise<void>;
 
@@ -86,6 +88,8 @@ export class HealthMonitorBot extends AppLogger {
             this.monitoredAccounts.set(account.address, {
                 lastHealth: account.lastHealth,
                 chatId: account.chatId,
+                firstThreshold: account.firstThreshold,
+                secondThreshold: account.secondThreshold
             });
         }
     }
@@ -118,11 +122,17 @@ export class HealthMonitorBot extends AppLogger {
             this.monitoredAccounts.set(address, {
                 lastHealth: quartzHealth,
                 chatId: chatId,
+                firstThreshold: (quartzHealth >= FIRST_THRESHOLD_WITH_BUFFER),
+                secondThreshold: (quartzHealth >= SECOND_THRESHOLD_WITH_BUFFER)
             });
 
             await this.telegram.api.sendMessage(
                 chatId, 
-                `I've started monitoring your Quartz account health! I'll send you a message if it drops below 25%, if it drops below 10%, or if it's auto-repaid using your collateral. Your current account health is ${quartzHealth}%`
+                `I've started monitoring your Quartz account health! I'll send you a message if:\n` +
+                `- Your health drops below 25%\n` +
+                `- Your health drops below 10%\n` +
+                `- Your loan is auto-repaid using your collateral (at 0%)\n\n` +
+                `Your current account health is ${quartzHealth}%`
             );
             await this.telegram.api.sendMessage(
                 chatId, 
@@ -201,15 +211,18 @@ export class HealthMonitorBot extends AppLogger {
                     const currentHealth = getQuartzHealth(driftHealth);
                     if (currentHealth === account.lastHealth) continue;
 
-                    if (account.lastHealth > 25 && currentHealth <= 25) {
+                    let firstThreshold = account.firstThreshold;
+                    let secondThreshold = account.secondThreshold;
+
+                    if (account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
+                        firstThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
                             `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid auto-repay!`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
-                    }
-
-                    if (account.lastHealth > 10 && currentHealth <= 10) {
+                    } else if (account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
+                        secondThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
                             `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate.`
@@ -217,13 +230,18 @@ export class HealthMonitorBot extends AppLogger {
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
 
+                    if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) firstThreshold = true;
+                    if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) secondThreshold = true;
+
                     // TODO - Notify on auto-repay
 
                     this.monitoredAccounts.set(address, {
                         lastHealth: currentHealth,
                         chatId: account.chatId,
+                        firstThreshold,
+                        secondThreshold
                     });
-                    this.supabase.updateAccount(address, currentHealth);
+                    this.supabase.updateAccount(address, currentHealth, firstThreshold, secondThreshold);
                 } catch (error) {
                     this.logger.error(`Error finding Drift User for ${address}: ${error}`);
                 }

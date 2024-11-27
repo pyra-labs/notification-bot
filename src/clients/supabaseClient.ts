@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "../types/database.types.js";
 import config from "../config/config.js";
 import { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
+import { FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER } from "../config/constants.js";
 
 export class Supabase {
     public supabase: SupabaseClient<Database>;
@@ -23,6 +24,8 @@ export class Supabase {
             address: account.address,
             chatId: account.chat_id,
             lastHealth: account.last_health,
+            firstThreshold: account.first_threshold,
+            secondThreshold: account.second_threshold
         }));
 
         return monitoredAccounts;
@@ -46,14 +49,18 @@ export class Supabase {
             .insert({
                 address: address,
                 chat_id: chatId,
-                last_health: health
+                last_health: health,
+                first_threshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
+                second_threshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
             });
         if (error) throw error;
     }
 
     public async updateAccount(
         address: string, 
-        health: number
+        health: number,
+        firstThreshold: boolean,
+        secondThreshold: boolean
     ): Promise<void> {
         const { data: existingEntry } = await this.supabase
             .from('monitored_accounts')
@@ -66,7 +73,9 @@ export class Supabase {
         const { error } = await this.supabase
             .from('monitored_accounts')
             .update({
-                last_health: health
+                last_health: health,
+                first_threshold: firstThreshold,
+                second_threshold: secondThreshold
             })
             .eq('address', address);
         if (error) throw error;
