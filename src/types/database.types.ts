@@ -13,26 +13,17 @@ export type Database = {
         Row: {
           address: string
           chat_id: number
-          created_at: string | null
           last_health: number
-          updated_at: string | null
-          vault_address: string
         }
         Insert: {
           address: string
           chat_id: number
-          created_at?: string | null
           last_health: number
-          updated_at?: string | null
-          vault_address: string
         }
         Update: {
           address?: string
           chat_id?: number
-          created_at?: string | null
           last_health?: number
-          updated_at?: string | null
-          vault_address?: string
         }
         Relationships: []
       }

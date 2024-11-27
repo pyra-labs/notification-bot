@@ -1,5 +1,5 @@
 import { DriftClientManager } from '../api/driftClientManager.js';
-import { telegramBot } from '../telegramBot.js';
+import { telegramBot } from '../clients/telegramClient.js';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_KEY } from '../config/config.js';
 import { SUPABASE_URL } from '../config/config.js';

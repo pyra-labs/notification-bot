@@ -1,9 +1,10 @@
-import { Bot, GrammyError, HttpError } from "grammy";
-import { AppLogger } from "./utils/logger.js";
-import config from "./config/config.js";
+import { Api, Bot, GrammyError, HttpError } from "grammy";
+import { AppLogger } from "../utils/logger.js";
+import config from "../config/config.js";
 
-export class TelegramBot extends AppLogger {
+export class Telegram extends AppLogger {
     public bot: Bot;
+    public api: Api;
 
     constructor(
         startMonitoring: (address: string, chatId: number) => Promise<void>,
@@ -11,6 +12,7 @@ export class TelegramBot extends AppLogger {
     ) {
         super("Health Monitor Bot - Telegram API");
         this.bot = new Bot(config.TG_API_KEY);
+        this.api = this.bot.api;
 
         this.bot.command(
             "start", 
