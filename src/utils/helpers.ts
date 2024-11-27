@@ -1,7 +1,7 @@
 import { BN, DRIFT_PROGRAM_ID, DriftClient, PublicKey } from "@drift-labs/sdk";
-import { FUNDS_PROGRAM_ID, QUARTZ_HEALTH_BUFFER_PERCENTAGE } from "../config/constants";
+import { FUNDS_PROGRAM_ID, QUARTZ_HEALTH_BUFFER_PERCENTAGE } from "../config/constants.js";
 import { Logger } from "winston";
-import { DriftUser } from "../model/driftUser";
+import { DriftUser } from "../model/driftUser.js";
 import { Connection } from "@solana/web3.js";
 
 export function bnToDecimal(bn: BN, decimalPlaces: number): number {
@@ -17,8 +17,7 @@ export const getVault = (owner: PublicKey) => {
     return vault;
 }
 
-export const getDriftUser = (user: PublicKey) => {
-    const authority = getVault(user);
+export const getDriftUser = (authority: PublicKey) => {
     const [userPda] = PublicKey.findProgramAddressSync(
         [
 			Buffer.from("user"),

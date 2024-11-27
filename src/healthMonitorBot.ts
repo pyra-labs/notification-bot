@@ -1,16 +1,17 @@
-import config from "./config/config";
-import { AppLogger } from "./utils/logger";
+import config from "./config/config.js";
+import { AppLogger } from "./utils/logger.js";
 import express from "express";
 import cors from "cors";
 import hpp from "hpp";
 import helmet from "helmet";
 import { DriftClient, Wallet } from "@drift-labs/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { Telegram } from "./clients/telegramClient";
-import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/helpers";
-import { DriftUser } from "./model/driftUser";
-import { retryRPCWithBackoff } from "./utils/helpers";
-import { Supabase } from "./clients/supabaseClient";
+import { Telegram } from "./clients/telegramClient.js";
+import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/helpers.js";
+import { DriftUser } from "./model/driftUser.js";
+import { retryRPCWithBackoff } from "./utils/helpers.js";
+import { Supabase } from "./clients/supabaseClient.js";
+import { LOOP_DELAY } from "./config/constants.js";
 
 export class HealthMonitorBot extends AppLogger {
     public api: express.Application;
@@ -131,6 +132,7 @@ export class HealthMonitorBot extends AppLogger {
                 chatId, 
                 `Send /stop to stop receiving messages.`
             );
+            this.logger.info(`Started monitoring account ${address}`);
         } catch (error) {
             this.logger.error(`Error starting monitoring for account ${address}: ${error}`);
             await this.telegram.api.sendMessage(
@@ -164,6 +166,7 @@ export class HealthMonitorBot extends AppLogger {
                 chatId,
                 `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
             );
+            this.logger.info(`Stopped monitoring accounts: ${addresses.join(", ")}`);
         } catch (error) {
             this.logger.error(`Error stopping monitoring for chat ${chatId}: ${error}`);
             await this.telegram.api.sendMessage(
@@ -174,11 +177,14 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     public async start() {
+        this.listen();
         await this.loadedAccountsPromise;
-        await this.listen();
         this.logger.info(`Health Monitor Bot initialized`);
 
         while (true) {
+            const now = new Date();
+            this.logger.info(`[${now.toISOString()}] Checking ${this.monitoredAccounts.size} accounts...`);
+
             for (const [address, account] of this.monitoredAccounts.entries()) {
                 const displayAddress = getAddressDisplay(address);
                 const vaultAddress = getVault(new PublicKey(address));
@@ -200,6 +206,7 @@ export class HealthMonitorBot extends AppLogger {
                             account.chatId,
                             `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid auto-repay!`
                         );
+                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
 
                     if (account.lastHealth > 10 && currentHealth <= 10) {
@@ -207,10 +214,11 @@ export class HealthMonitorBot extends AppLogger {
                             account.chatId,
                             `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate.`
                         );
+                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
 
                     // TODO - Notify on auto-repay
-                    
+
                     this.monitoredAccounts.set(address, {
                         lastHealth: currentHealth,
                         chatId: account.chatId,
@@ -220,6 +228,8 @@ export class HealthMonitorBot extends AppLogger {
                     this.logger.error(`Error finding Drift User for ${address}: ${error}`);
                 }
             }
+
+            await new Promise(resolve => setTimeout(resolve, LOOP_DELAY));
         }
     }
 }

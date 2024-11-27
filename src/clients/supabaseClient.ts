@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Database } from "../types/database.types";
-import config from "../config/config";
-import { MonitoredAccount } from "../interfaces/monitoredAccount.interface";
+import { Database } from "../types/database.types.js";
+import config from "../config/config.js";
+import { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
 
 export class Supabase {
     public supabase: SupabaseClient<Database>;
@@ -41,13 +41,14 @@ export class Supabase {
 
         if (existingEntry) throw new Error(`Account ${address} already exists in Supabase`);
 
-        await this.supabase
+        const { error } = await this.supabase
             .from('monitored_accounts')
             .insert({
                 address: address,
                 chat_id: chatId,
                 last_health: health
             });
+        if (error) throw error;
     }
 
     public async updateAccount(
@@ -62,11 +63,13 @@ export class Supabase {
 
         if (!existingEntry) throw new Error(`Account ${address} does not exist in Supabase`);
 
-        await this.supabase
+        const { error } = await this.supabase
             .from('monitored_accounts')
             .update({
                 last_health: health
-            });
+            })
+            .eq('address', address);
+        if (error) throw error;
     }
 
     public async removeAccounts(addresses: string[]) {

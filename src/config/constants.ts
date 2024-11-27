@@ -1,5 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 
+export const LOOP_DELAY = 120_000;
 export const DRIFT_MARKET_INDEX_USDC = 0;
 export const DRIFT_MARKET_INDEX_SOL = 1;
 export const MICRO_CENTS_PER_USDC = 1000000;
