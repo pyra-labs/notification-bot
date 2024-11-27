@@ -59,8 +59,8 @@ export class Supabase {
     public async updateAccount(
         address: string, 
         health: number,
-        firstThreshold: boolean,
-        secondThreshold: boolean
+        notifyAtFirstThreshold: boolean,
+        notifyAtSecondThreshold: boolean
     ): Promise<void> {
         const { data: existingEntry } = await this.supabase
             .from('monitored_accounts')
@@ -74,8 +74,8 @@ export class Supabase {
             .from('monitored_accounts')
             .update({
                 last_health: health,
-                first_threshold: firstThreshold,
-                second_threshold: secondThreshold
+                notify_at_first_threshold: notifyAtFirstThreshold,
+                notify_at_second_threshold: notifyAtSecondThreshold
             })
             .eq('address', address);
         if (error) throw error;

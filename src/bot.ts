@@ -11,7 +11,7 @@ import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/h
 import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD } from "./config/constants.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID } from "./config/constants.js";
 import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 
 export class HealthMonitorBot extends AppLogger {
@@ -110,7 +110,7 @@ export class HealthMonitorBot extends AppLogger {
             if (this.monitoredAccounts.has(address)) {
                 await this.telegram.api.sendMessage(
                     chatId, 
-                    `Account ${getAddressDisplay(address)} is already being monitored, it's current health is ${quartzHealth}%`
+                    `That account is already being monitored, it's current health is ${quartzHealth}%`
                 );
                 return;
             }
@@ -187,6 +187,7 @@ export class HealthMonitorBot extends AppLogger {
     public async start() {
         this.listen();
         await this.loadedAccountsPromise;
+        await this.setupAutoRepayListener();
         this.logger.info(`Health Monitor Bot initialized`);
 
         while (true) {
@@ -216,22 +217,20 @@ export class HealthMonitorBot extends AppLogger {
                         notifyAtFirstThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
-                            `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
+                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     } else if (notifyAtSecondThreshold && account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
                         notifyAtSecondThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
-                            `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
+                            `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
 
                     if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) notifyAtFirstThreshold = true;
                     if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) notifyAtSecondThreshold = true;
-
-                    // TODO - Notify on auto-repay
 
                     this.monitoredAccounts.set(address, {
                         address: address,
@@ -248,5 +247,31 @@ export class HealthMonitorBot extends AppLogger {
 
             await new Promise(resolve => setTimeout(resolve, LOOP_DELAY));
         }
+    }
+
+    private async setupAutoRepayListener() {
+        this.connection.onLogs(
+            QUARTZ_PROGRAM_ID,
+            async (logs) => {
+                if (logs.logs.some(log => log.includes('auto_repay_start'))) {
+                    try {
+                        const tx = await this.connection.getParsedTransaction(logs.signature);
+                        const accountKey = tx?.transaction.message.accountKeys[5].pubkey.toString();
+                        
+                        if (accountKey && this.monitoredAccounts.has(accountKey)) {
+                            const account = this.monitoredAccounts.get(accountKey)!;
+                            await this.telegram.api.sendMessage(
+                                account.chatId,
+                                `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
+                            );
+                            this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
+                        }
+                    } catch (error) {
+                        this.logger.error(`Error processing auto-repay event: ${error}`);
+                    }
+                }
+            },
+            'confirmed'
+        );
     }
 }

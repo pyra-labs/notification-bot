@@ -1,5 +1,5 @@
 import { BN, DRIFT_PROGRAM_ID, DriftClient, PublicKey } from "@drift-labs/sdk";
-import { FUNDS_PROGRAM_ID, QUARTZ_HEALTH_BUFFER_PERCENTAGE } from "../config/constants.js";
+import { QUARTZ_PROGRAM_ID, QUARTZ_HEALTH_BUFFER_PERCENTAGE } from "../config/constants.js";
 import { Logger } from "winston";
 import { DriftUser } from "../model/driftUser.js";
 import { Connection } from "@solana/web3.js";
@@ -12,7 +12,7 @@ export function bnToDecimal(bn: BN, decimalPlaces: number): number {
 export const getVault = (owner: PublicKey) => {
     const [vault] = PublicKey.findProgramAddressSync(
         [Buffer.from("vault"), owner.toBuffer()],
-        new PublicKey(FUNDS_PROGRAM_ID)
+        new PublicKey(QUARTZ_PROGRAM_ID)
     )
     return vault;
 }
@@ -56,7 +56,7 @@ export const getQuartzHealth = (driftHealth: number): number => {
 }
 
 export function getAddressDisplay(address: string) {
-    return `(${address.slice(0, 4)}...${address.slice(-4)})` 
+    return `${address.slice(0, 4)}...${address.slice(-4)}` 
 }
 
 export const retryRPCWithBackoff = async <T>(
