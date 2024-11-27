@@ -1,4 +1,4 @@
-import { Api, Bot, GrammyError, HttpError } from "grammy";
+import { Api, Bot, BotError, GrammyError, HttpError } from "grammy";
 import { AppLogger } from "../utils/logger.js";
 import config from "../config/config.js";
 
@@ -40,7 +40,7 @@ export class Telegram extends AppLogger {
             }
         );
 
-        this.bot.catch((err) => {
+        this.bot.catch(((err: BotError) => {
             const chatId = err.ctx?.chat?.id;
             const updateId = err.ctx?.update?.update_id;
             
@@ -51,7 +51,7 @@ export class Telegram extends AppLogger {
             } else {
                 this.logger.error(`[${chatId}] ${updateId} >> Unknown error: ${err.error}:`);
             }
-        });
+        }).bind(this));
 
         this.bot.start();
     }
