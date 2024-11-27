@@ -12,6 +12,7 @@ import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
 import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD } from "./config/constants.js";
+import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 
 export class HealthMonitorBot extends AppLogger {
     public api: express.Application;
@@ -24,12 +25,7 @@ export class HealthMonitorBot extends AppLogger {
 
     private telegram: Telegram;
     private supabase: Supabase;
-    private monitoredAccounts: Map<string, {
-        lastHealth: number;
-        chatId: number;
-        firstThreshold: boolean;
-        secondThreshold: boolean;
-    }>;
+    private monitoredAccounts: Map<string, MonitoredAccount>;
     private loadedAccountsPromise: Promise<void>;
 
     constructor() {
@@ -86,10 +82,11 @@ export class HealthMonitorBot extends AppLogger {
 
         for (const account of accounts) {
             this.monitoredAccounts.set(account.address, {
-                lastHealth: account.lastHealth,
+                address: account.address,
                 chatId: account.chatId,
-                firstThreshold: account.firstThreshold,
-                secondThreshold: account.secondThreshold
+                lastHealth: account.lastHealth,
+                notifyAtFirstThreshold: account.notifyAtFirstThreshold,
+                notifyAtSecondThreshold: account.notifyAtSecondThreshold
             });
         }
     }
@@ -120,10 +117,11 @@ export class HealthMonitorBot extends AppLogger {
 
             await this.supabase.addAccount(address, chatId, quartzHealth);
             this.monitoredAccounts.set(address, {
-                lastHealth: quartzHealth,
+                address: address,
                 chatId: chatId,
-                firstThreshold: (quartzHealth >= FIRST_THRESHOLD_WITH_BUFFER),
-                secondThreshold: (quartzHealth >= SECOND_THRESHOLD_WITH_BUFFER)
+                lastHealth: quartzHealth,
+                notifyAtFirstThreshold: (quartzHealth >= FIRST_THRESHOLD_WITH_BUFFER),
+                notifyAtSecondThreshold: (quartzHealth >= SECOND_THRESHOLD_WITH_BUFFER)
             });
 
             await this.telegram.api.sendMessage(
@@ -211,37 +209,38 @@ export class HealthMonitorBot extends AppLogger {
                     const currentHealth = getQuartzHealth(driftHealth);
                     if (currentHealth === account.lastHealth) continue;
 
-                    let firstThreshold = account.firstThreshold;
-                    let secondThreshold = account.secondThreshold;
+                    let notifyAtFirstThreshold = account.notifyAtFirstThreshold;
+                    let notifyAtSecondThreshold = account.notifyAtSecondThreshold;
 
-                    if (account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
-                        firstThreshold = false;
+                    if (notifyAtFirstThreshold && account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
+                        notifyAtFirstThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
-                            `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid auto-repay!`
+                            `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
-                    } else if (account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
-                        secondThreshold = false;
+                    } else if (notifyAtSecondThreshold && account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
+                        notifyAtSecondThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
-                            `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate.`
+                            `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
 
-                    if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) firstThreshold = true;
-                    if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) secondThreshold = true;
+                    if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) notifyAtFirstThreshold = true;
+                    if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) notifyAtSecondThreshold = true;
 
                     // TODO - Notify on auto-repay
 
                     this.monitoredAccounts.set(address, {
-                        lastHealth: currentHealth,
+                        address: address,
                         chatId: account.chatId,
-                        firstThreshold,
-                        secondThreshold
+                        lastHealth: currentHealth,
+                        notifyAtFirstThreshold: notifyAtFirstThreshold,
+                        notifyAtSecondThreshold: notifyAtSecondThreshold
                     });
-                    this.supabase.updateAccount(address, currentHealth, firstThreshold, secondThreshold);
+                    this.supabase.updateAccount(address, currentHealth, notifyAtFirstThreshold, notifyAtSecondThreshold);
                 } catch (error) {
                     this.logger.error(`Error finding Drift User for ${address}: ${error}`);
                 }

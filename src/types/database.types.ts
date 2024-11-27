@@ -14,22 +14,22 @@ export type Database = {
           address: string
           chat_id: number
           last_health: number
-          first_threshold: boolean
-          second_threshold: boolean
+          notify_at_first_threshold: boolean
+          notify_at_second_threshold: boolean
         }
         Insert: {
           address: string
           chat_id: number
           last_health: number
-          first_threshold: boolean
-          second_threshold: boolean
+          notify_at_first_threshold: boolean
+          notify_at_second_threshold: boolean
         }
         Update: {
           address?: string
           chat_id?: number
           last_health?: number
-          first_threshold?: boolean
-          second_threshold?: boolean
+          notify_at_first_threshold?: boolean
+          notify_at_second_threshold?: boolean
         }
         Relationships: []
       }

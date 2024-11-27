@@ -24,8 +24,8 @@ export class Supabase {
             address: account.address,
             chatId: account.chat_id,
             lastHealth: account.last_health,
-            firstThreshold: account.first_threshold,
-            secondThreshold: account.second_threshold
+            notifyAtFirstThreshold: account.notify_at_first_threshold,
+            notifyAtSecondThreshold: account.notify_at_second_threshold
         }));
 
         return monitoredAccounts;
@@ -50,8 +50,8 @@ export class Supabase {
                 address: address,
                 chat_id: chatId,
                 last_health: health,
-                first_threshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
-                second_threshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
+                notify_at_first_threshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
+                notify_at_second_threshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
             });
         if (error) throw error;
     }
