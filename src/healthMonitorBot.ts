@@ -7,8 +7,9 @@ import helmet from "helmet";
 import { DriftClient, Wallet } from "@drift-labs/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient";
-import { getQuartzHealth, getUser } from "./utils/helpers";
+import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/helpers";
 import { DriftUser } from "./model/driftUser";
+import { retryRPCWithBackoff } from "./utils/helpers";
 import { Supabase } from "./clients/supabaseClient";
 
 export class HealthMonitorBot extends AppLogger {
@@ -23,7 +24,6 @@ export class HealthMonitorBot extends AppLogger {
     private telegram: Telegram;
     private supabase: Supabase;
     private monitoredAccounts: Map<string, {
-        address: PublicKey;
         lastHealth: number;
         chatId: number;
     }>;
@@ -83,7 +83,6 @@ export class HealthMonitorBot extends AppLogger {
 
         for (const account of accounts) {
             this.monitoredAccounts.set(account.address, {
-                address: new PublicKey(account.address),
                 lastHealth: account.lastHealth,
                 chatId: account.chatId,
             });
@@ -109,14 +108,13 @@ export class HealthMonitorBot extends AppLogger {
             if (this.monitoredAccounts.has(address)) {
                 await this.telegram.api.sendMessage(
                     chatId, 
-                    `Account ${address} is already being monitored, it's current health is ${quartzHealth}%`
+                    `Account ${getAddressDisplay(address)} is already being monitored, it's current health is ${quartzHealth}%`
                 );
                 return;
             }
 
             await this.supabase.addAccount(address, chatId, quartzHealth);
             this.monitoredAccounts.set(address, {
-                address: new PublicKey(address),
                 lastHealth: quartzHealth,
                 chatId: chatId,
             });
@@ -178,7 +176,50 @@ export class HealthMonitorBot extends AppLogger {
     public async start() {
         await this.loadedAccountsPromise;
         await this.listen();
+        this.logger.info(`Health Monitor Bot initialized`);
 
-        // TODO - Add monitoring logic
+        while (true) {
+            for (const [address, account] of this.monitoredAccounts.entries()) {
+                const displayAddress = getAddressDisplay(address);
+                const vaultAddress = getVault(new PublicKey(address));
+                try {
+                    const driftUser = new DriftUser(vaultAddress, this.connection, this.driftClient!);
+                    await retryRPCWithBackoff(
+                        async () => driftUser.initialize(),
+                        3,
+                        1_000,
+                        this.logger
+                    );
+
+                    const driftHealth = driftUser.getHealth();
+                    const currentHealth = getQuartzHealth(driftHealth);
+                    if (currentHealth === account.lastHealth) continue;
+
+                    if (account.lastHealth > 25 && currentHealth <= 25) {
+                        await this.telegram.api.sendMessage(
+                            account.chatId,
+                            `Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid auto-repay!`
+                        );
+                    }
+
+                    if (account.lastHealth > 10 && currentHealth <= 10) {
+                        await this.telegram.api.sendMessage(
+                            account.chatId,
+                            `🚨 Your account health for wallet ${displayAddress} has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate.`
+                        );
+                    }
+
+                    // TODO - Notify on auto-repay
+                    
+                    this.monitoredAccounts.set(address, {
+                        lastHealth: currentHealth,
+                        chatId: account.chatId,
+                    });
+                    this.supabase.updateAccount(address, currentHealth);
+                } catch (error) {
+                    this.logger.error(`Error finding Drift User for ${address}: ${error}`);
+                }
+            }
+        }
     }
 }

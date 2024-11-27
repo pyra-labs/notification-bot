@@ -55,7 +55,7 @@ export const getQuartzHealth = (driftHealth: number): number => {
     );
 }
 
-export function getDisplayWalletAddress(address: string) {
+export function getAddressDisplay(address: string) {
     return `(${address.slice(0, 4)}...${address.slice(-4)})` 
 }
 
