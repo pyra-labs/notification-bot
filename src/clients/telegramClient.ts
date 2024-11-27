@@ -52,5 +52,7 @@ export class Telegram extends AppLogger {
                 this.logger.error(`[${chatId}] ${updateId} >> Unknown error: ${err.error}:`);
             }
         });
+
+        this.bot.start();
     }
 }
