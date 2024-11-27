@@ -30,7 +30,8 @@ export const getDriftUser = (authority: PublicKey) => {
 }
 
 export const getUser = async (address: string, connection: Connection, driftClient: DriftClient) => {
-    const driftUser = new DriftUser(new PublicKey(address), connection, driftClient);
+    const vault = getVault(new PublicKey(address));
+    const driftUser = new DriftUser(vault, connection, driftClient);
     await retryRPCWithBackoff(
         async () => driftUser.initialize(),
         3,

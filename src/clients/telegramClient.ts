@@ -16,7 +16,10 @@ export class Telegram extends AppLogger {
 
         this.bot.command(
             "start", 
-            (ctx) => ctx.reply("Hey! Please send me your wallet address so I can monitor your Quartz account health!")
+            (ctx) => {
+                ctx.reply("Hey! Please send me your wallet address so I can monitor your Quartz account health!");
+                this.logger.info(`User started the bot`);
+            }
         );
 
         this.bot.command(
