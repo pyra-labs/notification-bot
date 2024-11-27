@@ -1,9 +1,9 @@
 import { DriftClientManager } from '../api/driftClientManager.js';
-import { bot } from '../api/telegram.js';
+import { telegramBot } from '../telegramBot.js';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SUPABASE_KEY } from '../utils/config.js';
-import { SUPABASE_URL } from '../utils/config.js';
-import { Database } from '../utils/database.types.js';
+import { SUPABASE_KEY } from '../config/config.js';
+import { SUPABASE_URL } from '../config/config.js';
+import { Database } from '../types/database.types.js';
 import { getDisplayWalletAddress } from '../utils/helpers.js';
 
 export class AccountMonitoringService {
@@ -59,7 +59,7 @@ export class AccountMonitoringService {
             // Get initial health
             const initialHealth = await this.driftClientManager.getUserHealth(vaultAddress);
             if (initialHealth instanceof Error || typeof initialHealth !== 'number') {
-                await bot.api.sendMessage(chatId, `I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account.`);
+                await telegramBot.api.sendMessage(chatId, `I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account.`);
                 return;
             };
 
@@ -87,8 +87,8 @@ export class AccountMonitoringService {
 
             console.log(`Started monitoring address ${address} with interval ${intervalMs}ms`);
             if (result == 'new') {
-                await bot.api.sendMessage(chatId, `I've started monitoring your Quartz account health! I'll send you a message if it drops below 25%, and another if it drops below 10%. Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
-                await bot.api.sendMessage(chatId, `Send /stop to stop receiving alerts.`)
+                await telegramBot.api.sendMessage(chatId, `I've started monitoring your Quartz account health! I'll send you a message if it drops below 25%, and another if it drops below 10%. Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`);
+                await telegramBot.api.sendMessage(chatId, `Send /stop to stop receiving alerts.`);
             }
         } catch (error: any) {
             throw new Error(`Failed to start monitoring address ${address}: ${error.message}`);
@@ -114,7 +114,7 @@ export class AccountMonitoringService {
             clearInterval(monitoring.interval);
 
             // Remove from monitored accounts
-            await bot.api.sendMessage(monitoring.chatId, `Stopped monitoring your Quartz account health.`);
+            await telegramBot.api.sendMessage(monitoring.chatId, `Stopped monitoring your Quartz account health.`);
             this.monitoredAccounts.delete(address);
         } catch (error: any) {
             throw new Error(`Failed to stop monitoring address ${address}: ${error.message}`);
@@ -134,12 +134,12 @@ export class AccountMonitoringService {
             
             if (monitoring.lastHealth > 25 && currentHealth <= 25) {
                 console.log(`Health warning for address ${address}: ${currentHealth}%`);
-                await bot.api.sendMessage(monitoring.chatId, `Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid liquidation!`);
+                await telegramBot.api.sendMessage(monitoring.chatId, `Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Please add more collateral to your account to avoid liquidation!`);
             }
 
             if (monitoring.lastHealth > 10 && currentHealth <= 10) {
                 console.log(`Health warning for address ${address}: ${currentHealth}%`);
-                await bot.api.sendMessage(monitoring.chatId, `🚨 Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Add more collateral to your account now to avoid liquidation!`);
+                await telegramBot.api.sendMessage(monitoring.chatId, `🚨 Your account health for wallet ${walletDisplayAddress} has dropped to ${currentHealth}%. Add more collateral to your account now to avoid liquidation!`);
             }
 
             // Update stored health in both memory and database
