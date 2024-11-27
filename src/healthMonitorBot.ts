@@ -50,8 +50,8 @@ export class HealthMonitorBot extends AppLogger {
         this.driftInitPromise = this.driftClient.subscribe();
 
         this.telegram = new Telegram(
-            this.startMonitoring,
-            this.stopMonitoring
+            this.startMonitoring.bind(this),
+            this.stopMonitoring.bind(this)
         );
         this.supabase = new Supabase();
         this.monitoredAccounts = new Map();
