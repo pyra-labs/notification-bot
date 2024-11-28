@@ -13,6 +13,8 @@ import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
 import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID } from "./config/constants.js";
 import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
+import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
+import idl from "./idl/quartz.json";
 
 export class HealthMonitorBot extends AppLogger {
     public api: express.Application;
@@ -250,28 +252,52 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async setupAutoRepayListener() {
+        const INSRTUCTION_NAME = "AutoRepayStart";
+        const ACCOUNT_INDEX = 5;
+
         this.connection.onLogs(
             QUARTZ_PROGRAM_ID,
             async (logs) => {
-                if (logs.logs.some(log => log.includes('auto_repay_start'))) {
-                    try {
-                        const tx = await this.connection.getParsedTransaction(logs.signature);
-                        const accountKey = tx?.transaction.message.accountKeys[5].pubkey.toString();
-                        
-                        if (accountKey && this.monitoredAccounts.has(accountKey)) {
-                            const account = this.monitoredAccounts.get(accountKey)!;
-                            await this.telegram.api.sendMessage(
-                                account.chatId,
-                                `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
-                            );
-                            this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
-                        }
-                    } catch (error) {
-                        this.logger.error(`Error processing auto-repay event: ${error}`);
+                if (!logs.logs.some(log => log.includes(INSRTUCTION_NAME))) return;
+
+                try {
+                    const tx = await this.connection.getTransaction(logs.signature, {
+                        maxSupportedTransactionVersion: 0,
+                        commitment: 'confirmed'
+                    });
+                    if (!tx) throw new Error(`Transaction not found`);
+
+                    const encodedIxs = tx.transaction.message.compiledInstructions;
+                    const accountKeys = tx.transaction.message.staticAccountKeys;
+
+                    const coder = new BorshInstructionCoder(idl as Idl);
+                    for (const ix of encodedIxs) {
+                        try {
+                            const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
+                            if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
+                                const index = ix.accountKeyIndexes[ACCOUNT_INDEX];
+                                const accountKey = accountKeys[index].toString();
+
+                                const monitoredAccount = this.monitoredAccounts.get(accountKey);
+
+                                if (monitoredAccount) {
+                                    await this.telegram.api.sendMessage(
+                                        monitoredAccount.chatId,
+                                        `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
+                                    );
+                                    this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
+                                }
+
+                                return;
+                            }
+                        } catch (e) { continue; }
                     }
+                    
+                    throw new Error(`Could not decode instruction`);
+                } catch (error) {
+                    this.logger.error(`Error processing ${INSRTUCTION_NAME} instruction for ${logs.signature}: ${error}`);
                 }
-            },
-            'confirmed'
+            }
         );
     }
 }
