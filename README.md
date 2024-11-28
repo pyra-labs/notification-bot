@@ -18,10 +18,11 @@ Feel free to contribute or run your own instance!
 
 4. Enter a name and a username, and you'll receive an API key
 
-5. Create a .env file in the root folder and add your API key in the following format:
+5. Create a .env file in the root folder and add your RPC node URL and API key in the following format:
 
 ```
 # Replace with your actual API key
+RPC_URL=https://api.mainnet-beta.solana.com
 TG_API_KEY=0000000000:AAAAAAAAA_AAAAAAA-aaaaaaaaaaaaaaaaa 
 ```
 
@@ -68,18 +69,17 @@ SUPABASE_URL=https://aaaaaaaaaa.supabase.co
 SUPABASE_KEY=000000000000000000000000000000
 ```
 
-10. (Optional) You can also add a private Solana RPC URL by adding it to the .env file:
+10. If the bot throws an error, you can receive email notifications by setting up the .env vars for SMTP. See your email client for where to find the values.
 ```
-# Replace with your actual URL
-RPC_URL=https://api.mainnet-beta.solana.com 
+# Replace with your actual data
+EMAIL_TO=iarla@quartzpay.io,diego@quartzpay.io
+EMAIL_FROM=diego@quartzpay.io
+EMAIL_HOST=your-email-client.com
+EMAIL_PORT=123
+EMAIL_USER=000000000@your-client-username.com
+EMAIL_PASSWORD=0000000000
 ```
 
-11. A full .env file might look like this:
-```
-TG_API_KEY=0000000000:AAAAAAAAA_AAAAAAA-aaaaaaaaaaaaaaaaa
-SUPABASE_URL=https://aaaaaaaaaa.supabase.co
-SUPABASE_KEY=000000000000000000000000000000
-RPC_URL=https://api.mainnet-beta.solana.com 
-```
+11. A full example .env file can be found at `.env.example`
 
 12. Run the server with `npm run start`
