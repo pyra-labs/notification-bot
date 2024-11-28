@@ -255,6 +255,8 @@ export class HealthMonitorBot extends AppLogger {
                                         `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
                                     );
                                     this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
+                                } else {
+                                    this.logger.info(`Detected auto-repay for unmonitored account ${accountKey}`);
                                 }
 
                                 return;
