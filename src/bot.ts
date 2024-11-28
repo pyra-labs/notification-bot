@@ -17,10 +17,6 @@ import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
 import idl from "./idl/quartz.json";
 
 export class HealthMonitorBot extends AppLogger {
-    public api: express.Application;
-    public port: number;
-    public isListening: boolean = false;
-
     private connection: Connection;
     private driftClient: DriftClient; 
     private driftInitPromise: Promise<boolean>;
@@ -32,13 +28,6 @@ export class HealthMonitorBot extends AppLogger {
 
     constructor() {
         super("Health Monitor Bot");
-
-        this.port = config.PORT;
-        this.api = express();
-        this.configureMiddleware();
-        this.api.get("/", (req, res) => {
-            res.status(200).json({ accounts: 0 }); // TODO - Add account count
-        });
 
         this.connection = new Connection(config.RPC_URL);
         const wallet = new Wallet(Keypair.generate());
@@ -56,25 +45,6 @@ export class HealthMonitorBot extends AppLogger {
         this.supabase = new Supabase();
         this.monitoredAccounts = new Map();
         this.loadedAccountsPromise = this.loadStoredAccounts();
-    }
-
-    private configureMiddleware() {
-        this.api.use(cors({ origin: "*" }));
-        this.api.use(hpp());
-        this.api.use(helmet());
-        this.api.use(express.json());
-    } 
-
-    private async listen() {
-        if (this.isListening) {
-            this.logger.warn("API is already listening");
-            return;
-        }
-
-        this.api.listen(this.port, () => {
-            this.isListening = true;
-            this.logger.info(`API listening on port ${this.port}`);
-        });
     }
 
     private async loadStoredAccounts(): Promise<void> {
@@ -187,7 +157,6 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     public async start() {
-        this.listen();
         await this.loadedAccountsPromise;
         await this.setupAutoRepayListener();
         this.logger.info(`Health Monitor Bot initialized`);

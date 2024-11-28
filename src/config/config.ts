@@ -5,7 +5,6 @@ dotenv.config();
 
 const envSchema = z.object({
     RPC_URL: z.string().url(),
-    PORT: z.coerce.number().min(0),
     TG_API_KEY: z.string(),
     SUPABASE_URL: z.string().url(),
     SUPABASE_KEY: z.string(),
