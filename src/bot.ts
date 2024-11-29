@@ -15,6 +15,7 @@ import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, 
 import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
 import idl from "./idl/quartz.json";
+import { Logs } from "@solana/web3.js";
 
 export class HealthMonitorBot extends AppLogger {
     private connection: Connection;
@@ -161,10 +162,11 @@ export class HealthMonitorBot extends AppLogger {
         await this.setupAutoRepayListener();
         this.logger.info(`Health Monitor Bot initialized`);
 
-        while (true) {
-            const now = new Date();
-            this.logger.info(`[${now.toISOString()}] Checking ${this.monitoredAccounts.size} accounts...`);
+        setInterval(() => {
+            this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
+        }, 1000 * 60 * 60 * 24); // Every 24 hours
 
+        while (true) {
             for (const [address, account] of this.monitoredAccounts.entries()) {
                 const displayAddress = getAddressDisplay(address);
                 const vaultAddress = getVault(new PublicKey(address));
@@ -224,51 +226,54 @@ export class HealthMonitorBot extends AppLogger {
         const INSRTUCTION_NAME = "AutoRepayStart";
         const ACCOUNT_INDEX = 5;
 
+        const analyzeQuartzLogs = async (logs: Logs) => {
+            if (!logs.logs.some(log => log.includes(INSRTUCTION_NAME))) return;
+
+            try {
+                const tx = await this.connection.getTransaction(logs.signature, {
+                    maxSupportedTransactionVersion: 0,
+                    commitment: 'confirmed'
+                });
+                if (!tx) throw new Error(`Transaction not found`);
+
+                const encodedIxs = tx.transaction.message.compiledInstructions;
+                const accountKeys = tx.transaction.message.staticAccountKeys;
+
+                const coder = new BorshInstructionCoder(idl as Idl);
+                for (const ix of encodedIxs) {
+                    try {
+                        const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
+                        if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
+                            const index = ix.accountKeyIndexes[ACCOUNT_INDEX];
+                            const accountKey = accountKeys[index].toString();
+
+                            const monitoredAccount = this.monitoredAccounts.get(accountKey);
+
+                            if (monitoredAccount) {
+                                await this.telegram.api.sendMessage(
+                                    monitoredAccount.chatId,
+                                    `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
+                                );
+                                this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
+                            } else {
+                                this.logger.info(`Detected auto-repay for unmonitored account ${accountKey}`);
+                            }
+
+                            return;
+                        }
+                    } catch (e) { continue; }
+                }
+                
+                throw new Error(`Could not decode instruction`);
+            } catch (error) {
+                this.logger.error(`Error processing ${INSRTUCTION_NAME} instruction for ${logs.signature}: ${error}`);
+            }
+        }
+
         this.connection.onLogs(
             QUARTZ_PROGRAM_ID,
-            async (logs) => {
-                if (!logs.logs.some(log => log.includes(INSRTUCTION_NAME))) return;
-
-                try {
-                    const tx = await this.connection.getTransaction(logs.signature, {
-                        maxSupportedTransactionVersion: 0,
-                        commitment: 'confirmed'
-                    });
-                    if (!tx) throw new Error(`Transaction not found`);
-
-                    const encodedIxs = tx.transaction.message.compiledInstructions;
-                    const accountKeys = tx.transaction.message.staticAccountKeys;
-
-                    const coder = new BorshInstructionCoder(idl as Idl);
-                    for (const ix of encodedIxs) {
-                        try {
-                            const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
-                            if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
-                                const index = ix.accountKeyIndexes[ACCOUNT_INDEX];
-                                const accountKey = accountKeys[index].toString();
-
-                                const monitoredAccount = this.monitoredAccounts.get(accountKey);
-
-                                if (monitoredAccount) {
-                                    await this.telegram.api.sendMessage(
-                                        monitoredAccount.chatId,
-                                        `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
-                                    );
-                                    this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
-                                } else {
-                                    this.logger.info(`Detected auto-repay for unmonitored account ${accountKey}`);
-                                }
-
-                                return;
-                            }
-                        } catch (e) { continue; }
-                    }
-                    
-                    throw new Error(`Could not decode instruction`);
-                } catch (error) {
-                    this.logger.error(`Error processing ${INSRTUCTION_NAME} instruction for ${logs.signature}: ${error}`);
-                }
-            }
+            analyzeQuartzLogs,
+            "confirmed"    
         );
     }
 }
