@@ -4,10 +4,10 @@ import express from "express";
 import cors from "cors";
 import hpp from "hpp";
 import helmet from "helmet";
-import { DriftClient, Wallet } from "@drift-labs/sdk";
+import { DriftClient, fetchUserAccountsUsingKeys, UserAccount, Wallet } from "@drift-labs/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
-import { getAddressDisplay, getQuartzHealth, getUser, getVault } from "./utils/helpers.js";
+import { getAddressDisplay, getDriftUser, getQuartzHealth, getUser, getVault } from "./utils/helpers.js";
 import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
@@ -157,6 +157,21 @@ export class HealthMonitorBot extends AppLogger {
         }
     }
 
+    private async fetchDriftUsers(vaults: PublicKey[]): Promise<UserAccount[]> {
+        const driftUsers = await fetchUserAccountsUsingKeys(
+            this.connection, 
+            this.driftClient!.program, 
+            vaults.map((vault) => getDriftUser(vault))
+        );
+        
+        const undefinedIndex = driftUsers.findIndex(user => !user);
+        if (undefinedIndex !== -1) {
+            throw new Error(`Failed to fetch drift user for vault ${vaults[undefinedIndex].toString()}`);
+        }
+
+        return driftUsers as UserAccount[];
+    } 
+
     public async start() {
         await this.loadedAccountsPromise;
         await this.setupAutoRepayListener();
@@ -167,18 +182,21 @@ export class HealthMonitorBot extends AppLogger {
         }, 1000 * 60 * 60 * 24); // Every 24 hours
 
         while (true) {
-            for (const [address, account] of this.monitoredAccounts.entries()) {
-                const displayAddress = getAddressDisplay(address);
-                const vaultAddress = getVault(new PublicKey(address));
-                try {
-                    const driftUser = new DriftUser(vaultAddress, this.connection, this.driftClient!);
-                    await retryRPCWithBackoff(
-                        async () => driftUser.initialize(),
-                        3,
-                        1_000,
-                        this.logger
-                    );
+            const entries = Array.from(this.monitoredAccounts.entries());
+            const vaults = entries.map((entry) => getVault(new PublicKey(entry[0])));
+            const driftUsers = await retryRPCWithBackoff(
+                async () => this.fetchDriftUsers(vaults),
+                3,
+                1_000,
+                this.logger
+            );
 
+            for (let i = 0; i < entries.length; i++) { 
+                const [address, account] = entries[i];
+                const displayAddress = getAddressDisplay(address);
+
+                try {
+                    const driftUser = new DriftUser(vaults[i], this.connection, this.driftClient!, driftUsers[i]);
                     const driftHealth = driftUser.getHealth();
                     const currentHealth = getQuartzHealth(driftHealth);
                     if (currentHealth === account.lastHealth) continue;
