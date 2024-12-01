@@ -11,7 +11,7 @@ import { getAddressDisplay, getDriftUser, getQuartzHealth, getUser, getVault } f
 import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID } from "./config/constants.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC } from "./config/constants.js";
 import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
 import idl from "./idl/quartz.json";
@@ -36,6 +36,13 @@ export class HealthMonitorBot extends AppLogger {
             connection: this.connection,
             wallet: wallet,
             env: 'mainnet-beta',
+            userStats: false,
+            perpMarketIndexes: [],
+            spotMarketIndexes: [DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC],
+            accountSubscription: {
+                type: 'websocket',
+                commitment: "confirmed"
+            }
         });
         this.driftInitPromise = this.driftClient.subscribe();
 
