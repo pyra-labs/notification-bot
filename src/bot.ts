@@ -11,7 +11,7 @@ import { getAddressDisplay, getDriftUser, getQuartzHealth, getUser, getVault } f
 import { DriftUser } from "./model/driftUser.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC } from "./config/constants.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC, SUPPORTED_DRIFT_MARKETS } from "./config/constants.js";
 import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
 import idl from "./idl/quartz.json";
@@ -38,7 +38,7 @@ export class HealthMonitorBot extends AppLogger {
             env: 'mainnet-beta',
             userStats: false,
             perpMarketIndexes: [],
-            spotMarketIndexes: [DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC],
+            spotMarketIndexes: SUPPORTED_DRIFT_MARKETS,
             accountSubscription: {
                 type: 'websocket',
                 commitment: "confirmed"
@@ -249,7 +249,8 @@ export class HealthMonitorBot extends AppLogger {
 
     private async setupAutoRepayListener() {
         const INSRTUCTION_NAME = "AutoRepayStart";
-        const ACCOUNT_INDEX = 5;
+        const ACCOUNT_INDEX_OWNER = 5;
+        const ACCOUNT_INDEX_CALLER = 0;
 
         const analyzeQuartzLogs = async (logs: Logs) => {
             if (!logs.logs.some(log => log.includes(INSRTUCTION_NAME))) return;
@@ -269,19 +270,29 @@ export class HealthMonitorBot extends AppLogger {
                     try {
                         const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
                         if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
-                            const index = ix.accountKeyIndexes[ACCOUNT_INDEX];
-                            const accountKey = accountKeys[index].toString();
+                            const caller = accountKeys[
+                                ix.accountKeyIndexes[ACCOUNT_INDEX_CALLER]
+                            ].toString();
 
-                            const monitoredAccount = this.monitoredAccounts.get(accountKey);
+                            const owner = accountKeys[
+                                ix.accountKeyIndexes[ACCOUNT_INDEX_OWNER]
+                            ].toString();
+
+                            const monitoredAccount = this.monitoredAccounts.get(owner);
 
                             if (monitoredAccount) {
+                                if (caller === owner) {
+                                    this.logger.info(`Detected manual repay for account ${owner}`);
+                                    return;
+                                }
+
                                 await this.telegram.api.sendMessage(
                                     monitoredAccount.chatId,
-                                    `💰 Your loans for account ${getAddressDisplay(accountKey)} have automatically been repaid by selling your collateral at market rate.`
+                                    `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
                                 );
-                                this.logger.info(`Sending auto-repay notification for account ${accountKey}`);
-                            } else {
-                                this.logger.info(`Detected auto-repay for unmonitored account ${accountKey}`);
+                                this.logger.info(`Sending auto-repay notification for account ${owner}`);
+                            } else if (caller !== owner) {
+                                this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
                             }
 
                             return;
