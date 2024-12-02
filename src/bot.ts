@@ -211,18 +211,18 @@ export class HealthMonitorBot extends AppLogger {
                     let notifyAtFirstThreshold = account.notifyAtFirstThreshold;
                     let notifyAtSecondThreshold = account.notifyAtSecondThreshold;
 
-                    if (notifyAtFirstThreshold && account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
-                        notifyAtFirstThreshold = false;
-                        await this.telegram.api.sendMessage(
-                            account.chatId,
-                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
-                        );
-                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
-                    } else if (notifyAtSecondThreshold && account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
+                    if (notifyAtSecondThreshold && account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
                         notifyAtSecondThreshold = false;
                         await this.telegram.api.sendMessage(
                             account.chatId,
                             `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
+                        );
+                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
+                    } else if (notifyAtFirstThreshold && account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
+                        notifyAtFirstThreshold = false;
+                        await this.telegram.api.sendMessage(
+                            account.chatId,
+                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
                     }
