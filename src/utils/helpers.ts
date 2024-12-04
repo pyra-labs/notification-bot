@@ -65,15 +65,49 @@ export const retryRPCWithBackoff = async <T>(
     initialDelay: number,
     logger?: Logger
 ): Promise<T> => {
+    return retryWithBackoff(
+        fn,
+        "503",
+        "RPC node unavailable",
+        retries,
+        initialDelay,
+        logger
+    );
+}
+
+export const retryHTTPWithBackoff = async <T>(
+    fn: () => Promise<T>,
+    retries: number,
+    initialDelay: number,
+    logger?: Logger
+): Promise<T> => {
+    return retryWithBackoff(
+        fn,
+        "HttpError",
+        "HTTP network request failed",
+        retries,
+        initialDelay,
+        logger
+    );
+}
+
+export const retryWithBackoff = async <T>(
+    fn: () => Promise<T>,
+    errorContains: string,
+    warnString: string,
+    retries: number,
+    initialDelay: number,
+    logger?: Logger
+): Promise<T> => {
     let lastError: any;
     for (let i = 0; i < retries; i++) {
         try {
             return await fn();
         } catch (error: any) {
             lastError = error;
-            if (error?.message?.includes('503')) {
+            if (error?.message?.includes(errorContains)) {
                 const delay = initialDelay * Math.pow(2, i);
-                if (logger) logger.warn(`RPC node unavailable, retrying in ${delay}ms...`);
+                if (logger) logger.warn(`${warnString}, retrying in ${delay}ms...`);
                 
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
