@@ -164,19 +164,12 @@ export class HealthMonitorBot extends AppLogger {
         }
     }
 
-    private async fetchDriftUsers(vaults: PublicKey[]): Promise<UserAccount[]> {
-        const driftUsers = await fetchUserAccountsUsingKeys(
+    private async fetchDriftUsers(vaults: PublicKey[]): Promise<(UserAccount | undefined)[]> {
+        return await fetchUserAccountsUsingKeys(
             this.connection, 
             this.driftClient!.program, 
             vaults.map((vault) => getDriftUser(vault))
         );
-        
-        const undefinedIndex = driftUsers.findIndex(user => !user);
-        if (undefinedIndex !== -1) {
-            throw new Error(`Failed to fetch drift user for vault ${vaults[undefinedIndex].toString()}`);
-        }
-
-        return driftUsers as UserAccount[];
     } 
 
     public async start() {
@@ -191,16 +184,28 @@ export class HealthMonitorBot extends AppLogger {
         while (true) {
             const entries = Array.from(this.monitoredAccounts.entries());
             const vaults = entries.map((entry) => getVault(new PublicKey(entry[0])));
-            const driftUsers = await retryRPCWithBackoff(
-                async () => this.fetchDriftUsers(vaults),
-                3,
-                1_000,
-                this.logger
-            );
+            let driftUsers: (UserAccount | undefined)[];
+
+            try {
+                driftUsers = await retryRPCWithBackoff(
+                    async () => this.fetchDriftUsers(vaults),
+                    3,
+                    1_000,
+                    this.logger
+                );
+            } catch (error) {
+                this.logger.error(`Error fetching drift users: ${error}`);
+                continue;
+            }
 
             for (let i = 0; i < entries.length; i++) { 
                 const [address, account] = entries[i];
                 const displayAddress = getAddressDisplay(address);
+
+                if (!driftUsers[i]) {
+                    this.logger.warn(`Drift user not found for account ${address}`);
+                    continue;
+                }
 
                 let currentHealth: number;
                 try {
