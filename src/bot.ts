@@ -8,7 +8,7 @@ import { Supabase } from "./clients/supabaseClient.js";
 import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, } from "./config/constants.js";
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import { BorshInstructionCoder, type Idl, Wallet } from "@coral-xyz/anchor";
-import idl from "./idl/quartz.json";
+import idl from "./idl/quartz.json" with { type: "json" };
 import type { Logs } from "@solana/web3.js";
 import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
 
