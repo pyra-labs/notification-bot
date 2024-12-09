@@ -1,26 +1,20 @@
 import config from "./config/config.js";
 import { AppLogger } from "./utils/logger.js";
-import express from "express";
-import cors from "cors";
-import hpp from "hpp";
-import helmet from "helmet";
-import { DriftClient, fetchUserAccountsUsingKeys, UserAccount, Wallet } from "@drift-labs/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
-import { getAddressDisplay, getDriftUser, getQuartzHealth, getUser, getVault, retryHTTPWithBackoff } from "./utils/helpers.js";
-import { DriftUser } from "./model/driftUser.js";
+import { getAddressDisplay, retryHTTPWithBackoff } from "./utils/helpers.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, DRIFT_MARKET_INDEX_SOL, DRIFT_MARKET_INDEX_USDC, SUPPORTED_DRIFT_MARKETS } from "./config/constants.js";
-import { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
-import { BorshInstructionCoder, Idl, Instruction } from "@coral-xyz/anchor";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, } from "./config/constants.js";
+import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
+import { BorshInstructionCoder, type Idl, Wallet } from "@coral-xyz/anchor";
 import idl from "./idl/quartz.json";
-import { Logs } from "@solana/web3.js";
+import type { Logs } from "@solana/web3.js";
+import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
 
 export class HealthMonitorBot extends AppLogger {
     private connection: Connection;
-    private driftClient: DriftClient; 
-    private driftInitPromise: Promise<boolean>;
+    private quartzClientPromise: Promise<QuartzClient>;
 
     private telegram: Telegram;
     private supabase: Supabase;
@@ -32,19 +26,7 @@ export class HealthMonitorBot extends AppLogger {
 
         this.connection = new Connection(config.RPC_URL);
         const wallet = new Wallet(Keypair.generate());
-        this.driftClient = new DriftClient({
-            connection: this.connection,
-            wallet: wallet,
-            env: 'mainnet-beta',
-            userStats: false,
-            perpMarketIndexes: [],
-            spotMarketIndexes: SUPPORTED_DRIFT_MARKETS,
-            accountSubscription: {
-                type: 'websocket',
-                commitment: "confirmed"
-            }
-        });
-        this.driftInitPromise = this.driftClient.subscribe();
+        this.quartzClientPromise = QuartzClient.fetchClient(this.connection, wallet);
 
         this.telegram = new Telegram(
             this.startMonitoring.bind(this),
@@ -56,8 +38,6 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async loadStoredAccounts(): Promise<void> {
-        await this.driftInitPromise;
-
         const accounts = await this.supabase.getAccounts();
 
         for (const account of accounts) {
@@ -72,60 +52,89 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async startMonitoring(address: string, chatId: number) {
+        const quartzClient = await this.quartzClientPromise;
+
+        let user: QuartzUser;
         try {
-            let driftUser: DriftUser;
-            try {
-                driftUser = await getUser(address, this.connection, this.driftClient);
-            } catch (error) {
-                await this.telegram.api.sendMessage(
+            user = await retryRPCWithBackoff(
+                async () => quartzClient.getQuartzAccount(new PublicKey(address)),
+                3,
+                1_000,
+                this.logger
+            );
+        } catch {
+            await retryHTTPWithBackoff(
+                async () => await this.telegram.api.sendMessage(
                     chatId, 
                     "I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account."
-                );
-                return;
-            }
+                ),
+                3,
+                1_000,
+                this.logger
+            );
+            return;
+        }
 
-            const driftHealth = driftUser.getHealth();
-            const quartzHealth = getQuartzHealth(driftHealth);
-
+        try {
+            const health = user.getHealth();
+            
             if (this.monitoredAccounts.has(address)) {
-                await this.telegram.api.sendMessage(
-                    chatId, 
-                    `That account is already being monitored, it's current health is ${quartzHealth}%`
+                await retryHTTPWithBackoff(
+                    async () => await this.telegram.api.sendMessage(
+                        chatId, 
+                        `That account is already being monitored, it's current health is ${health}%`
+                    ),
+                    3,
+                    1_000,
+                    this.logger
                 );
                 return;
             }
 
-            await this.supabase.addAccount(address, chatId, quartzHealth);
+            await this.supabase.addAccount(address, chatId, health);
             this.monitoredAccounts.set(address, {
                 address: address,
                 chatId: chatId,
-                lastHealth: quartzHealth,
-                notifyAtFirstThreshold: (quartzHealth >= FIRST_THRESHOLD_WITH_BUFFER),
-                notifyAtSecondThreshold: (quartzHealth >= SECOND_THRESHOLD_WITH_BUFFER)
+                lastHealth: health,
+                notifyAtFirstThreshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
+                notifyAtSecondThreshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
             });
 
-            await this.telegram.api.sendMessage(
-                chatId, 
-                `I've started monitoring your Quartz account health! I'll send you a message if:\n` +
-                `- Your health drops below 25%\n` +
-                `- Your health drops below 10%\n` +
-                `- Your loan is auto-repaid using your collateral (at 0%)\n\n` +
-                `Your current account health is ${quartzHealth}%`
-            );
-            await this.telegram.api.sendMessage(
-                chatId, 
-                `Be sure to turn on notifications in your Telegram app to receive alerts! 🔔`
-            );
-            await this.telegram.api.sendMessage(
-                chatId, 
-                `Send /stop to stop receiving messages.`
+            await retryHTTPWithBackoff(
+                async () => {
+                    await this.telegram.api.sendMessage(
+                        chatId, 
+                        `I've started monitoring your Quartz account health! I'll send you a message if:\n
+                        - Your health drops below 25%\n
+                        - Your health drops below 10%\n
+                        - Your loan is auto-repaid using your collateral (at 0%)\n\n
+                        Your current account health is ${health}%`
+                    );
+                    await this.telegram.api.sendMessage(
+                        chatId, 
+                        "Be sure to turn on notifications in your Telegram app to receive alerts! 🔔"
+                    );
+                    await this.telegram.api.sendMessage(
+                        chatId, 
+                        "Send /stop to stop receiving messages."
+                    );
+                },
+                3,
+                1_000,
+                this.logger
             );
             this.logger.info(`Started monitoring account ${address}`);
+
         } catch (error) {
             this.logger.error(`Error starting monitoring for account ${address}: ${error}`);
-            await this.telegram.api.sendMessage(
-                chatId, 
-                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+            await retryHTTPWithBackoff(
+                async () => await this.telegram.api.sendMessage(
+                    chatId, 
+                    `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+                ),
+                3,
+                1_000,
+                this.logger
             );
         }
     }
@@ -138,9 +147,14 @@ export class HealthMonitorBot extends AppLogger {
             }
 
             if (addresses.length === 0) {
-                await this.telegram.api.sendMessage(
-                    chatId,
-                    "You don't have any accounts being monitored."
+                await retryHTTPWithBackoff(
+                    async () => await this.telegram.api.sendMessage(
+                        chatId,
+                        "You don't have any accounts being monitored."
+                    ),
+                    3,
+                    1_000,
+                    this.logger
                 );
                 return;
             }
@@ -150,102 +164,100 @@ export class HealthMonitorBot extends AppLogger {
                 this.monitoredAccounts.delete(address);
             }
 
-            await this.telegram.api.sendMessage(
-                chatId,
-                `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
+            await retryHTTPWithBackoff(
+                async () => await this.telegram.api.sendMessage(
+                    chatId,
+                    `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
+                ),
+                3,
+                1_000,
+                this.logger
             );
             this.logger.info(`Stopped monitoring accounts: ${addresses.join(", ")}`);
+
         } catch (error) {
             this.logger.error(`Error stopping monitoring for chat ${chatId}: ${error}`);
-            await this.telegram.api.sendMessage(
-                chatId, 
-                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+            await retryHTTPWithBackoff(
+                async () => await this.telegram.api.sendMessage(
+                    chatId, 
+                    `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+                ),
+                3,
+                1_000,
+                this.logger
             );
         }
     }
 
-    private async fetchDriftUsers(vaults: PublicKey[]): Promise<(UserAccount | undefined)[]> {
-        return await fetchUserAccountsUsingKeys(
-            this.connection, 
-            this.driftClient!.program, 
-            vaults.map((vault) => getDriftUser(vault))
-        );
-    } 
-
     public async start() {
+        const quartzClient = await this.quartzClientPromise;
         await this.loadedAccountsPromise;
         await this.setupAutoRepayListener();
-        this.logger.info(`Health Monitor Bot initialized`);
+        this.logger.info("Health Monitor Bot initialized");
 
         setInterval(() => {
             this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
         }, 1000 * 60 * 60 * 24); // Every 24 hours
 
         while (true) {
-            const entries = Array.from(this.monitoredAccounts.entries());
-            const vaults = entries.map((entry) => getVault(new PublicKey(entry[0])));
-            let driftUsers: (UserAccount | undefined)[];
+            const entries = [...this.monitoredAccounts]
+            const owners = entries.map(entry => new PublicKey(entry[0]));
 
+            let users: (QuartzUser | null)[];
             try {
-                driftUsers = await retryRPCWithBackoff(
-                    async () => this.fetchDriftUsers(vaults),
+                users = await retryRPCWithBackoff(
+                    async () => quartzClient.getMultipleQuartzAccounts(owners),
                     3,
                     1_000,
                     this.logger
                 );
             } catch (error) {
-                this.logger.error(`Error fetching drift users: ${error}`);
+                this.logger.error(`Error fetching users: ${error}`);
                 continue;
             }
 
             for (let i = 0; i < entries.length; i++) { 
-                const [address, account] = entries[i];
+                const user = users[i];
+                const [address, accountData] = entries[i];
                 const displayAddress = getAddressDisplay(address);
 
-                if (!driftUsers[i]) {
-                    this.logger.warn(`Drift user not found for account ${address}`);
+                if (!user) {
+                    this.logger.warn(`User not found for account ${address}`);
                     continue;
                 }
 
                 let currentHealth: number;
-                try {
-                    const driftUser = new DriftUser(vaults[i], this.connection, this.driftClient!, driftUsers[i]);
-                    const driftHealth = driftUser.getHealth();
-                    currentHealth = getQuartzHealth(driftHealth);
-                } catch (error) {
-                    this.logger.error(`Error finding Drift User for ${address}: ${error}`);
-                    continue;
-                }
-
-                if (currentHealth === account.lastHealth) continue;
-                let notifyAtFirstThreshold = account.notifyAtFirstThreshold;
-                let notifyAtSecondThreshold = account.notifyAtSecondThreshold;
+                let notifyAtFirstThreshold = accountData.notifyAtFirstThreshold;
+                let notifyAtSecondThreshold = accountData.notifyAtSecondThreshold;
 
                 try {
-                    if (notifyAtSecondThreshold && account.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
+                    currentHealth = user.getHealth();
+                    if (currentHealth === accountData.lastHealth) continue;
+
+                    if (notifyAtSecondThreshold && accountData.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
                         notifyAtSecondThreshold = false;
                         await retryHTTPWithBackoff(
                             async () => this.telegram.api.sendMessage(
-                                account.chatId,
+                                accountData.chatId,
                                 `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
                             ),
                             3,
                             1_000,
                             this.logger
                         );
-                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
-                    } else if (notifyAtFirstThreshold && account.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
+                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
+                    } else if (notifyAtFirstThreshold && accountData.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
                         notifyAtFirstThreshold = false;
                         await retryHTTPWithBackoff(
                             async () => this.telegram.api.sendMessage(
-                                account.chatId,
+                                accountData.chatId,
                                 `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
                             ),
                             3,
                             1_000,
                             this.logger
                         );
-                        this.logger.info(`Sending health warning to ${address} (was ${account.lastHealth}%, now ${currentHealth}%)`);
+                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
                     }
                 } catch (error) {
                     this.logger.error(`Error sending notification for ${address}: ${error}`);
@@ -258,7 +270,7 @@ export class HealthMonitorBot extends AppLogger {
                 try {
                     this.monitoredAccounts.set(address, {
                         address: address,
-                        chatId: account.chatId,
+                        chatId: accountData.chatId,
                         lastHealth: currentHealth,
                         notifyAtFirstThreshold: notifyAtFirstThreshold,
                         notifyAtSecondThreshold: notifyAtSecondThreshold
@@ -286,7 +298,7 @@ export class HealthMonitorBot extends AppLogger {
                     maxSupportedTransactionVersion: 0,
                     commitment: 'confirmed'
                 });
-                if (!tx) throw new Error(`Transaction not found`);
+                if (!tx) throw new Error("Transaction not found");
 
                 const encodedIxs = tx.transaction.message.compiledInstructions;
                 const accountKeys = tx.transaction.message.staticAccountKeys;
@@ -323,10 +335,10 @@ export class HealthMonitorBot extends AppLogger {
 
                             return;
                         }
-                    } catch (e) { continue; }
+                    } catch { }
                 }
                 
-                throw new Error(`Could not decode instruction`);
+                throw new Error("Could not decode instruction");
             } catch (error) {
                 this.logger.error(`Error processing ${INSRTUCTION_NAME} instruction for ${logs.signature}: ${error}`);
             }

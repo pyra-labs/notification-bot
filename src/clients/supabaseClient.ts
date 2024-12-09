@@ -1,7 +1,7 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Database } from "../types/database.types.js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../types/database.types.js";
 import config from "../config/config.js";
-import { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
+import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
 import { FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER } from "../config/constants.js";
 
 export class Supabase {

@@ -14,7 +14,7 @@ const envSchema = z.object({
                 const emails = str.split(',').map(email => email.trim());
                 if (!emails.every(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error();
                 return emails;
-            } catch (error) {
+            } catch {
                 throw new Error("Invalid email list format: must be comma-separated email addresses");
             }
         }),

@@ -1,4 +1,4 @@
-import { Api, Bot, BotError, GrammyError, HttpError } from "grammy";
+import { type Api, Bot, type BotError, GrammyError, HttpError } from "grammy";
 import { AppLogger } from "../utils/logger.js";
 import config from "../config/config.js";
 
@@ -18,7 +18,7 @@ export class Telegram extends AppLogger {
             "start", 
             (ctx) => {
                 ctx.reply("Hey! Please send me your wallet address so I can monitor your Quartz account health!");
-                this.logger.info(`User started the bot`);
+                this.logger.info("User started the bot");
             }
         );
 
