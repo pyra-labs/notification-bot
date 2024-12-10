@@ -1,11 +1,14 @@
 {
-  "name": "account-watcher",
+  "name": "health-monitor-bot",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "dev": "NODE_ENV=development tsx src/index.ts",
-    "start": "tsc -p tsconfig.json && node build/index.js",
-    "lint": "yarn biome lint --write"
+    "lint": "yarn biome lint --write",
+    "build": "yarn install && yarn lint && tsc -p tsconfig.json",
+    "start": "yarn build && node dist/index.js",
+    "docker": "docker build -t health-monitor-bot .",
+    "docker:run": "docker run --env-file ./.env health-monitor-bot"
   },
   "type": "module",
   "keywords": [],
@@ -24,7 +27,7 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "0.29.0",
-    "@quartz-labs/sdk": "^0.0.12",
+    "@quartz-labs/sdk": "^0.0.14",
     "@solana/web3.js": "^1.95.4",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
@@ -39,5 +42,9 @@
     "winston": "^3.17.0",
     "ws": "^8.16.0",
     "zod": "^3.23.8"
+  },
+  "resolutions": {
+    "rpc-websockets": "^9.0.2",
+    "@solana/web3.js": "^1.95.8"
   }
 }

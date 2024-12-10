@@ -1,4 +1,4 @@
-import type { BN, } from "@drift-labs/sdk";
+import type { BN } from "@coral-xyz/anchor";
 import type { Logger } from "winston";
 
 export function bnToDecimal(bn: BN, decimalPlaces: number): number {

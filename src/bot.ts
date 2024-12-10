@@ -217,8 +217,11 @@ export class HealthMonitorBot extends AppLogger {
             }
 
             for (let i = 0; i < entries.length; i++) { 
+                const entry = entries[i];
+                if (!entry) continue;
+
                 const user = users[i];
-                const [address, accountData] = entries[i];
+                const [address, accountData] = entry;
                 const displayAddress = getAddressDisplay(address);
 
                 if (!user) {
@@ -308,13 +311,13 @@ export class HealthMonitorBot extends AppLogger {
                     try {
                         const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
                         if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
-                            const caller = accountKeys[
-                                ix.accountKeyIndexes[ACCOUNT_INDEX_CALLER]
-                            ].toString();
+                            const callerIndex = ix.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
+                            if (!callerIndex || !accountKeys[callerIndex]) continue;
+                            const caller = accountKeys[callerIndex].toString();
 
-                            const owner = accountKeys[
-                                ix.accountKeyIndexes[ACCOUNT_INDEX_OWNER]
-                            ].toString();
+                            const ownerIndex = ix.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
+                            if (!ownerIndex || !accountKeys[ownerIndex]) continue;
+                            const owner = accountKeys[ownerIndex].toString();
 
                             const monitoredAccount = this.monitoredAccounts.get(owner);
 
