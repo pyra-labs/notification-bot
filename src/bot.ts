@@ -5,15 +5,12 @@ import { Telegram } from "./clients/telegramClient.js";
 import { getAddressDisplay, retryHTTPWithBackoff } from "./utils/helpers.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, QUARTZ_PROGRAM_ID, } from "./config/constants.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, } from "./config/constants.js";
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
-import { BorshInstructionCoder, type Idl, Wallet } from "@coral-xyz/anchor";
-import idl from "./idl/quartz.json" with { type: "json" };
-import type { Logs } from "@solana/web3.js";
-import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
+import type { MessageCompiledInstruction } from "@solana/web3.js";
+import { QuartzClient, type QuartzUser, Wallet } from "@quartz-labs/sdk";
 
 export class HealthMonitorBot extends AppLogger {
-    private connection: Connection;
     private quartzClientPromise: Promise<QuartzClient>;
 
     private telegram: Telegram;
@@ -24,9 +21,9 @@ export class HealthMonitorBot extends AppLogger {
     constructor() {
         super("Health Monitor Bot");
 
-        this.connection = new Connection(config.RPC_URL);
+        const connection = new Connection(config.RPC_URL);
         const wallet = new Wallet(Keypair.generate());
-        this.quartzClientPromise = QuartzClient.fetchClient(this.connection, wallet);
+        this.quartzClientPromise = QuartzClient.fetchClient(connection, wallet);
 
         this.telegram = new Telegram(
             this.startMonitoring.bind(this),
@@ -289,68 +286,40 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async setupAutoRepayListener() {
+        const quartzClient = await this.quartzClientPromise;
+
         const INSRTUCTION_NAME = "AutoRepayStart";
         const ACCOUNT_INDEX_OWNER = 5;
         const ACCOUNT_INDEX_CALLER = 0;
 
-        const analyzeQuartzLogs = async (logs: Logs) => {
-            if (!logs.logs.some(log => log.includes(INSRTUCTION_NAME))) return;
+        quartzClient.listenForInstruction(
+            INSRTUCTION_NAME,
+            async (instruction: MessageCompiledInstruction, accountKeys: PublicKey[]) => {
+                const callerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
+                if (!callerIndex || !accountKeys[callerIndex]) return;
+                const caller = accountKeys[callerIndex].toString();
 
-            try {
-                const tx = await this.connection.getTransaction(logs.signature, {
-                    maxSupportedTransactionVersion: 0,
-                    commitment: 'confirmed'
-                });
-                if (!tx) throw new Error("Transaction not found");
+                const ownerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
+                if (!ownerIndex || !accountKeys[ownerIndex]) return;
+                const owner = accountKeys[ownerIndex].toString();
 
-                const encodedIxs = tx.transaction.message.compiledInstructions;
-                const accountKeys = tx.transaction.message.staticAccountKeys;
+                const monitoredAccount = this.monitoredAccounts.get(owner);
 
-                const coder = new BorshInstructionCoder(idl as Idl);
-                for (const ix of encodedIxs) {
-                    try {
-                        const quartzIx = coder.decode(Buffer.from(ix.data), "base58");
-                        if (quartzIx?.name.toLowerCase() === INSRTUCTION_NAME.toLowerCase()) {
-                            const callerIndex = ix.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
-                            if (!callerIndex || !accountKeys[callerIndex]) continue;
-                            const caller = accountKeys[callerIndex].toString();
+                if (monitoredAccount) {
+                    if (caller === owner) {
+                        this.logger.info(`Detected manual repay for account ${owner}`);
+                        return;
+                    }
 
-                            const ownerIndex = ix.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
-                            if (!ownerIndex || !accountKeys[ownerIndex]) continue;
-                            const owner = accountKeys[ownerIndex].toString();
-
-                            const monitoredAccount = this.monitoredAccounts.get(owner);
-
-                            if (monitoredAccount) {
-                                if (caller === owner) {
-                                    this.logger.info(`Detected manual repay for account ${owner}`);
-                                    return;
-                                }
-
-                                await this.telegram.api.sendMessage(
-                                    monitoredAccount.chatId,
-                                    `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
-                                );
-                                this.logger.info(`Sending auto-repay notification for account ${owner}`);
-                            } else if (caller !== owner) {
-                                this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
-                            }
-
-                            return;
-                        }
-                    } catch { }
+                    await this.telegram.api.sendMessage(
+                        monitoredAccount.chatId,
+                        `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
+                    );
+                    this.logger.info(`Sending auto-repay notification for account ${owner}`);
+                } else if (caller !== owner) {
+                    this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
                 }
-                
-                throw new Error("Could not decode instruction");
-            } catch (error) {
-                this.logger.error(`Error processing ${INSRTUCTION_NAME} instruction for ${logs.signature}: ${error}`);
             }
-        }
-
-        this.connection.onLogs(
-            QUARTZ_PROGRAM_ID,
-            analyzeQuartzLogs,
-            "confirmed"    
-        );
+        )
     }
 }

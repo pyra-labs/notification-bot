@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx src/index.ts",
     "lint": "yarn biome lint --write",
-    "build": "yarn install && yarn lint && tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "yarn build && node dist/index.js",
     "docker": "docker build -t health-monitor-bot .",
     "docker:run": "docker run --env-file ./.env health-monitor-bot"
@@ -26,9 +26,8 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@coral-xyz/anchor": "0.29.0",
-    "@quartz-labs/sdk": "^0.0.14",
-    "@solana/web3.js": "^1.95.4",
+    "@solana/web3.js": "^1.95.8",
+    "@quartz-labs/sdk": "^0.0.16",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
     "cors": "^2.8.5",

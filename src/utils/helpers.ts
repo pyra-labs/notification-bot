@@ -1,4 +1,4 @@
-import type { BN } from "@coral-xyz/anchor";
+import type { BN } from "@quartz-labs/sdk";
 import type { Logger } from "winston";
 
 export function bnToDecimal(bn: BN, decimalPlaces: number): number {
