@@ -190,7 +190,7 @@ export class HealthMonitorBot extends AppLogger {
         const quartzClient = await this.quartzClientPromise;
         await this.loadedAccountsPromise;
         await this.setupAutoRepayListener();
-        this.logger.info("Health Monitor Bot initialized");
+        this.logger.info(`Health Monitor Bot initialized with ${this.monitoredAccounts.size} accounts`);
 
         setInterval(() => {
             this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
