@@ -1,6 +1,6 @@
 import config from "./config/config.js";
 import { AppLogger } from "./utils/logger.js";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
 import { getAddressDisplay, retryHTTPWithBackoff } from "./utils/helpers.js";
 import { retryRPCWithBackoff } from "./utils/helpers.js";
@@ -8,7 +8,7 @@ import { Supabase } from "./clients/supabaseClient.js";
 import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, } from "./config/constants.js";
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import type { MessageCompiledInstruction } from "@solana/web3.js";
-import { QuartzClient, type QuartzUser, Wallet } from "@quartz-labs/sdk";
+import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
 
 export class HealthMonitorBot extends AppLogger {
     private quartzClientPromise: Promise<QuartzClient>;
@@ -22,8 +22,7 @@ export class HealthMonitorBot extends AppLogger {
         super("Health Monitor Bot");
 
         const connection = new Connection(config.RPC_URL);
-        const wallet = new Wallet(Keypair.generate());
-        this.quartzClientPromise = QuartzClient.fetchClient(connection, wallet);
+        this.quartzClientPromise = QuartzClient.fetchClient(connection);
 
         this.telegram = new Telegram(
             this.startMonitoring.bind(this),
