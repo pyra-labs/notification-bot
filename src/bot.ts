@@ -287,8 +287,8 @@ export class HealthMonitorBot extends AppLogger {
     private async setupAutoRepayListener() {
         const quartzClient = await this.quartzClientPromise;
 
-        const INSRTUCTION_NAME = "AutoRepayStart";
-        const ACCOUNT_INDEX_OWNER = 5;
+        const INSRTUCTION_NAME = "StartCollateralRepay";
+        const ACCOUNT_INDEX_OWNER = 3;
         const ACCOUNT_INDEX_CALLER = 0;
 
         quartzClient.listenForInstruction(

@@ -557,6 +557,13 @@
     assert "^2.0.0"
     buffer "^6.0.1"
 
+"@pythnetwork/price-service-sdk@1.8.0":
+  version "1.8.0"
+  resolved "https://registry.yarnpkg.com/@pythnetwork/price-service-sdk/-/price-service-sdk-1.8.0.tgz#f5f01f654963eb9a0cf12127b4f1a89b60ef008a"
+  integrity sha512-tFZ1thj3Zja06DzPIX2dEWSi7kIfIyqreoywvw5NQ3Z1pl5OJHQGMEhxt6Li3UCGSp2ooYZS9wl8/8XfrfrNSA==
+  dependencies:
+    bn.js "^5.2.1"
+
 "@pythnetwork/price-service-sdk@>=1.6.0", "@pythnetwork/price-service-sdk@^1.7.1":
   version "1.7.1"
   resolved "https://registry.yarnpkg.com/@pythnetwork/price-service-sdk/-/price-service-sdk-1.7.1.tgz#dbfc8a8c2189f526346c1f79ec3995e89b690700"
@@ -575,18 +582,18 @@
     "@pythnetwork/solana-utils" "*"
     "@solana/web3.js" "^1.90.0"
 
-"@pythnetwork/pyth-solana-receiver@^0.8.2":
-  version "0.8.2"
-  resolved "https://registry.yarnpkg.com/@pythnetwork/pyth-solana-receiver/-/pyth-solana-receiver-0.8.2.tgz#e1c54de017bad6c321c22245fe240e020e9c853d"
-  integrity sha512-WrrdwwhSYvvB5vJEL+SfPnfuxgkRKMeKdZvGFFwe6ENrMhrQCM05oDkvNNYfXATLcpQGRAyBu9l1xIxUxixpqw==
+"@pythnetwork/pyth-solana-receiver@^0.9.1":
+  version "0.9.1"
+  resolved "https://registry.yarnpkg.com/@pythnetwork/pyth-solana-receiver/-/pyth-solana-receiver-0.9.1.tgz#d32167637f294bc610d88c569d04fe4d02708b8f"
+  integrity sha512-1Pfdq1JG9HYPDzzv6ZmXQJcYoRawEo+drK+YoZzPFXplWyRJwlSQAOW7KYNz2AQqH7jEUkxLbvUaifexViStXQ==
   dependencies:
     "@coral-xyz/anchor" "^0.29.0"
     "@noble/hashes" "^1.4.0"
-    "@pythnetwork/price-service-sdk" ">=1.6.0"
-    "@pythnetwork/solana-utils" "0.4.2"
+    "@pythnetwork/price-service-sdk" "1.8.0"
+    "@pythnetwork/solana-utils" "0.4.3"
     "@solana/web3.js" "^1.90.0"
 
-"@pythnetwork/solana-utils@*", "@pythnetwork/solana-utils@0.4.2":
+"@pythnetwork/solana-utils@*":
   version "0.4.2"
   resolved "https://registry.yarnpkg.com/@pythnetwork/solana-utils/-/solana-utils-0.4.2.tgz#3e220eed518c02ad702ebb023488afd7c5649a87"
   integrity sha512-hKo7Bcs/kDWA5Fnqhg9zJSB94NMoUDIDjHjSi/uvZOzwizISUQI6oY3LWd2CXzNh4f8djjY2BS5iNHaM4cm8Bw==
@@ -596,15 +603,25 @@
     bs58 "^5.0.0"
     jito-ts "^3.0.1"
 
-"@quartz-labs/sdk@0.1.3":
-  version "0.1.3"
-  resolved "https://registry.yarnpkg.com/@quartz-labs/sdk/-/sdk-0.1.3.tgz#3f8a850063167cddcaf389e26b9f93d293afb94c"
-  integrity sha512-Tc0LarZJ0mcKL9NvzLJE/f6OdOei7nBlvM3DEg1KVFKjoc1NFW/amAl/zkUDXqx/IPzRX5JxtnHS2V1sYfm7uw==
+"@pythnetwork/solana-utils@0.4.3":
+  version "0.4.3"
+  resolved "https://registry.yarnpkg.com/@pythnetwork/solana-utils/-/solana-utils-0.4.3.tgz#c925af00a13733ce81848d19c7c004e9dfedd92d"
+  integrity sha512-aMiVPtye3H2XFWXV8Hlgyp+oHXsAdt6d2FG0xhdTGDWssTnL4e9r7I8XBcucKHQkMDUhLN1bNeNOZcSBVyp9mg==
+  dependencies:
+    "@coral-xyz/anchor" "^0.29.0"
+    "@solana/web3.js" "^1.90.0"
+    bs58 "^5.0.0"
+    jito-ts "^3.0.1"
+
+"@quartz-labs/sdk@0.3.5":
+  version "0.3.5"
+  resolved "https://registry.yarnpkg.com/@quartz-labs/sdk/-/sdk-0.3.5.tgz#b12fc1f484ff3fa62d02da00f0de39cc5b22904f"
+  integrity sha512-mbj5c+qnAEbJVNifKvF2/s0+I22bVXxeTGLyDa6AAWMgJuLrhy595q2U9kjiVibJtPUhOvM0a7DHo6/8+pu+fQ==
   dependencies:
     "@coral-xyz/anchor" "^0.29.0"
     "@drift-labs/sdk" "^2.103.0-beta.9"
     "@jup-ag/api" "^6.0.30"
-    "@pythnetwork/pyth-solana-receiver" "^0.8.2"
+    "@pythnetwork/pyth-solana-receiver" "^0.9.1"
     "@solana/spl-token" "^0.4.9"
     bn.js "^5.2.1"
 
