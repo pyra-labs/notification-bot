@@ -1,5 +1,4 @@
 import config from "./config/config.js";
-import { AppLogger } from "./utils/logger.js";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
 import { getAddressDisplay, retryHTTPWithBackoff } from "./utils/helpers.js";
@@ -9,6 +8,7 @@ import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, 
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import type { MessageCompiledInstruction } from "@solana/web3.js";
 import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
+import { AppLogger } from "@quartz-labs/logger";
 
 export class HealthMonitorBot extends AppLogger {
     private quartzClientPromise: Promise<QuartzClient>;
@@ -19,7 +19,10 @@ export class HealthMonitorBot extends AppLogger {
     private loadedAccountsPromise: Promise<void>;
 
     constructor() {
-        super("Health Monitor Bot");
+        super({
+            name: "Health Monitor Bot",
+            dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
+        });
 
         const connection = new Connection(config.RPC_URL);
         this.quartzClientPromise = QuartzClient.fetchClient(connection);
