@@ -1,6 +1,7 @@
 import { type Api, Bot, type BotError, GrammyError, HttpError } from "grammy";
-import { AppLogger } from "../utils/logger.js";
 import config from "../config/config.js";
+import { AppLogger } from "@quartz-labs/logger";
+import { retryWithBackoff } from "@quartz-labs/sdk";
 
 export class Telegram extends AppLogger {
     public bot: Bot;
@@ -10,7 +11,10 @@ export class Telegram extends AppLogger {
         startMonitoring: (address: string, chatId: number) => Promise<void>,
         stopMonitoring: (chatId: number) => Promise<void>
     ) {
-        super("Health Monitor Bot - Telegram API");
+        super({
+            name: "Health Monitor Bot - Telegram API",
+            dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
+        });
         this.bot = new Bot(config.TG_API_KEY);
         this.api = this.bot.api;
 
@@ -57,5 +61,14 @@ export class Telegram extends AppLogger {
         }).bind(this));
 
         this.bot.start();
+    }
+
+    public async sendMessage(
+        chatId: number,
+        text: string
+    ) {
+        await retryWithBackoff(
+            () => this.api.sendMessage(chatId, text)
+        );
     }
 }

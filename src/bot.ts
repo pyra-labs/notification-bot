@@ -1,13 +1,12 @@
 import config from "./config/config.js";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
-import { getAddressDisplay, retryHTTPWithBackoff } from "./utils/helpers.js";
-import { retryRPCWithBackoff } from "./utils/helpers.js";
+import { getAddressDisplay } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
 import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, } from "./config/constants.js";
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
 import type { MessageCompiledInstruction } from "@solana/web3.js";
-import { QuartzClient, type QuartzUser } from "@quartz-labs/sdk";
+import { QuartzClient, retryWithBackoff, type QuartzUser } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
 
 export class HealthMonitorBot extends AppLogger {
@@ -55,21 +54,13 @@ export class HealthMonitorBot extends AppLogger {
 
         let user: QuartzUser;
         try {
-            user = await retryRPCWithBackoff(
-                async () => quartzClient.getQuartzAccount(new PublicKey(address)),
-                3,
-                1_000,
-                this.logger
+            user = await retryWithBackoff(
+                async () => quartzClient.getQuartzAccount(new PublicKey(address))
             );
         } catch {
-            await retryHTTPWithBackoff(
-                async () => await this.telegram.api.sendMessage(
-                    chatId, 
-                    "I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account."
-                ),
-                3,
-                1_000,
-                this.logger
+            await this.telegram.sendMessage(
+                chatId, 
+                "I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account."
             );
             return;
         }
@@ -78,14 +69,9 @@ export class HealthMonitorBot extends AppLogger {
             const health = user.getHealth();
             
             if (this.monitoredAccounts.has(address)) {
-                await retryHTTPWithBackoff(
-                    async () => await this.telegram.api.sendMessage(
-                        chatId, 
-                        `That account is already being monitored, it's current health is ${health}%`
-                    ),
-                    3,
-                    1_000,
-                    this.logger
+                await this.telegram.sendMessage(
+                    chatId, 
+                    `That account is already being monitored, it's current health is ${health}%`
                 );
                 return;
             }
@@ -99,41 +85,29 @@ export class HealthMonitorBot extends AppLogger {
                 notifyAtSecondThreshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
             });
 
-            await retryHTTPWithBackoff(
-                async () => {
-                    await this.telegram.api.sendMessage(
-                        chatId, 
-                        `I've started monitoring your Quartz account health! I'll send you a message if:\n
-                        - Your health drops below 25%\n
-                        - Your health drops below 10%\n
-                        - Your loan is auto-repaid using your collateral (at 0%)\n\n
-                        Your current account health is ${health}%`
-                    );
-                    await this.telegram.api.sendMessage(
-                        chatId, 
-                        "Be sure to turn on notifications in your Telegram app to receive alerts! 🔔"
-                    );
-                    await this.telegram.api.sendMessage(
-                        chatId, 
-                        "Send /stop to stop receiving messages."
-                    );
-                },
-                3,
-                1_000,
-                this.logger
+            await this.telegram.sendMessage(
+                chatId, 
+                `I've started monitoring your Quartz account health! I'll send you a message if:\n
+                - Your health drops below 25%\n
+                - Your health drops below 10%\n
+                - Your loan is auto-repaid using your collateral (at 0%)\n\n
+                Your current account health is ${health}%`
+            );
+            await this.telegram.sendMessage(
+                chatId, 
+                "Be sure to turn on notifications in your Telegram app to receive alerts! 🔔"
+            );
+            await this.telegram.sendMessage(
+                chatId, 
+                "Send /stop to stop receiving messages."
             );
             this.logger.info(`Started monitoring account ${address}`);
 
         } catch (error) {
             this.logger.error(`Error starting monitoring for account ${address}: ${error}`);
-            await retryHTTPWithBackoff(
-                async () => await this.telegram.api.sendMessage(
-                    chatId, 
-                    `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
-                ),
-                3,
-                1_000,
-                this.logger
+            await this.telegram.sendMessage(
+                chatId, 
+                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
             );
         }
     }
@@ -146,14 +120,9 @@ export class HealthMonitorBot extends AppLogger {
             }
 
             if (addresses.length === 0) {
-                await retryHTTPWithBackoff(
-                    async () => await this.telegram.api.sendMessage(
-                        chatId,
-                        "You don't have any accounts being monitored."
-                    ),
-                    3,
-                    1_000,
-                    this.logger
+                await this.telegram.sendMessage(
+                    chatId,
+                    "You don't have any accounts being monitored."
                 );
                 return;
             }
@@ -163,27 +132,17 @@ export class HealthMonitorBot extends AppLogger {
                 this.monitoredAccounts.delete(address);
             }
 
-            await retryHTTPWithBackoff(
-                async () => await this.telegram.api.sendMessage(
-                    chatId,
-                    `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
-                ),
-                3,
-                1_000,
-                this.logger
+            await this.telegram.sendMessage(
+                chatId,
+                `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
             );
             this.logger.info(`Stopped monitoring accounts: ${addresses.join(", ")}`);
 
         } catch (error) {
             this.logger.error(`Error stopping monitoring for chat ${chatId}: ${error}`);
-            await retryHTTPWithBackoff(
-                async () => await this.telegram.api.sendMessage(
-                    chatId, 
-                    `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
-                ),
-                3,
-                1_000,
-                this.logger
+            await this.telegram.sendMessage(
+                chatId, 
+                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
             );
         }
     }
@@ -204,11 +163,8 @@ export class HealthMonitorBot extends AppLogger {
 
             let users: (QuartzUser | null)[];
             try {
-                users = await retryRPCWithBackoff(
-                    async () => quartzClient.getMultipleQuartzAccounts(owners),
-                    3,
-                    1_000,
-                    this.logger
+                users = await retryWithBackoff(
+                    async () => quartzClient.getMultipleQuartzAccounts(owners)
                 );
             } catch (error) {
                 this.logger.error(`Error fetching users: ${error}`);
@@ -238,26 +194,16 @@ export class HealthMonitorBot extends AppLogger {
 
                     if (notifyAtSecondThreshold && accountData.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
                         notifyAtSecondThreshold = false;
-                        await retryHTTPWithBackoff(
-                            async () => this.telegram.api.sendMessage(
-                                accountData.chatId,
-                                `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
-                            ),
-                            3,
-                            1_000,
-                            this.logger
+                        await this.telegram.sendMessage(
+                            accountData.chatId,
+                            `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
                     } else if (notifyAtFirstThreshold && accountData.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
                         notifyAtFirstThreshold = false;
-                        await retryHTTPWithBackoff(
-                            async () => this.telegram.api.sendMessage(
-                                accountData.chatId,
-                                `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
-                            ),
-                            3,
-                            1_000,
-                            this.logger
+                        await this.telegram.sendMessage(
+                            accountData.chatId,
+                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
                         );
                         this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
                     }
@@ -313,7 +259,7 @@ export class HealthMonitorBot extends AppLogger {
                         return;
                     }
 
-                    await this.telegram.api.sendMessage(
+                    await this.telegram.sendMessage(
                         monitoredAccount.chatId,
                         `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
                     );
