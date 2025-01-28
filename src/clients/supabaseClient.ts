@@ -31,7 +31,7 @@ export class Supabase {
             chatId: account.chat_id,
             lastHealth: account.last_health,
             notifyAtFirstThreshold: account.notify_at_first_threshold,
-            notifyAtSecondThreshold: account.notify_at_second_threshold
+            notifyAtSecondThreshold: account.notify_at_second_threshold,
         }));
 
         return monitoredAccounts;

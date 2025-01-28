@@ -1,15 +1,18 @@
-import { type Api, Bot, type BotError, GrammyError, HttpError } from "grammy";
+import { type Api, Bot, type BotError, type Context, GrammyError, HttpError } from "grammy";
 import config from "../config/config.js";
 import { AppLogger } from "@quartz-labs/logger";
 import { retryWithBackoff } from "@quartz-labs/sdk";
+import { PublicKey } from "@solana/web3.js";
+import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
 
 export class Telegram extends AppLogger {
     public bot: Bot;
     public api: Api;
 
     constructor(
-        startMonitoring: (address: string, chatId: number) => Promise<void>,
-        stopMonitoring: (chatId: number) => Promise<void>
+        startMonitoring: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<void>,
+        stopMonitoring: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<void>,
+        getMonitoringList: (chatId: number) => Promise<MonitoredAccount[]>
     ) {
         super({
             name: "Health Monitor Bot - Telegram API",
@@ -21,29 +24,107 @@ export class Telegram extends AppLogger {
         this.bot.command(
             "start", 
             (ctx) => {
-                ctx.reply("Hey! Please send me your wallet address so I can monitor your Quartz account health!");
+                ctx.reply([
+                    "Hey! Welcome to the Quartz Health Monitor Bot! 👋",
+                    "",
+                    "Use /track followed by your wallet address and a health percentage and I'll start monitoring your Quartz account health.",
+                    "Use /help to see all available commands."
+                ].join("\n"));
                 this.logger.info("User started the bot");
+            }
+        );
+
+        this.bot.command(
+            "help", 
+            (ctx) => {
+                ctx.reply([
+                    "💎 Quartz Health Monitor Bot commands:\n",
+                    "/start \nStart the bot",
+                    "/help \nShow this message",
+                    "/track <address> <thresholds> \nSet account health percentage thresholds to be notified at. Eg: To be notified at 20% and 10%, use /track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10",
+                    "/stop <address> <thresholds> \nRemove account health percentage thresholds to be notified at. Eg: To no longer be notified at 20%, use /stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20",
+                    "/stop <address> \nRemove all account health percentage thresholds for a specified wallet",
+                    "/stop all \nRemove all account health percentage thresholds for all wallets",
+                    "/list \nList all wallets currently being monitored, and their health notification thresholds",
+                    "\nYou will also be notified if an auto-repay is triggered on any wallet you've set thresholds for"
+                ].join("\n\n"));
+            }
+        );
+
+        this.bot.command(
+            "track",
+            async (ctx) => {
+                const address = await this.validateAddress(ctx, "/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m");
+                if (!address) return;
+
+                const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
+                if (!thresholds) {
+                    ctx.reply("You must specify an account health percentage threshold to be notified at. Eg, to be notified at 20% and 10%: /track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10");
+                    return;
+                }
+
+                const thresholdsArray = thresholds.split(",").map(Number);
+                await startMonitoring(ctx.chat.id, address, thresholdsArray);
             }
         );
 
         this.bot.command(
             "stop", 
             async (ctx) => {
-                await stopMonitoring(ctx.chat.id);
+                const data = ctx.message?.text?.split(" ")[1];
+                if (!data) {
+                    ctx.reply([
+                        "Please include what you want me to stop monitoring:",
+                        "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10 will remove the 20% and 10% notification thresholds for D4c8...xa2m",
+                        "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m will remove all notification thresholds for D4c8...xa2m",
+                        "/stop all will stop monitoring all wallets"
+                    ].join("\n"));
+                    return;
+                }
+
+                if (data === "all") {
+                    await stopMonitoring(ctx.chat.id);
+                    return;
+                }
+                
+                const address = await this.validateAddress(ctx, "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m or /stop all");
+                if (!address) return;
+
+                const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
+                if (!thresholds) {
+                    await stopMonitoring(ctx.chat.id, address);
+                    return;
+                }
+
+                const thresholdsArray = thresholds.split(",").map(Number);
+                await stopMonitoring(ctx.chat.id, address, thresholdsArray);
+            }
+        );
+
+        this.bot.command(
+            "list",
+            async (ctx) => {
+                const list = await getMonitoringList(ctx.chat.id);
+
+                const listDisplay = list.map((account) => {
+                    const thresholdsDisplay = account.thresholds.map(
+                        threshold => `${threshold}%`
+                    ).join(", ");
+                    return `${account.address.toBase58()} - ${thresholdsDisplay}`;
+                }).join("\n");
+
+                ctx.reply([
+                    "I'm currently monitoring the following wallets. I will send a notification if auto-repay is triggered, or if their account health drops to the set percentages.",
+                    "",
+                    listDisplay
+                ].join("\n"));
             }
         );
 
         this.bot.on(
             "message:text", 
             async (ctx) => {
-                const walletRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-                
-                if (!walletRegex.test(ctx.message.text)) {
-                    ctx.reply("That doesn't look like a valid wallet address... Please send me a valid Solana wallet address for me to start monitoring your account health.");
-                    return;
-                }
-            
-                await startMonitoring(ctx.message.text, ctx.chat.id);
+                ctx.reply("I didn't get that... Use /help to see all available commands.");
             }
         );
 
@@ -61,6 +142,23 @@ export class Telegram extends AppLogger {
         }).bind(this));
 
         this.bot.start();
+    }
+
+    private async validateAddress(
+        ctx: Context,
+        correctUsage: string
+    ): Promise<PublicKey | null> {
+        try {
+            const address = ctx.message?.text?.split(" ")[1];
+            if (!address) throw new Error("No address provided");
+            return new PublicKey(address);
+        } catch {
+            await ctx.reply([
+                "That doesn't look like a valid Solana wallet address...",
+                `Please use the command like this: ${correctUsage}`
+            ].join("\n"));
+            return null;
+        }
     }
 
     public async sendMessage(
