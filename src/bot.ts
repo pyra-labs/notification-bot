@@ -241,10 +241,7 @@ export class HealthMonitorBot extends AppLogger {
                     const monitoredAccount = this.monitoredAccounts[owner.toBase58()];
 
                     if (monitoredAccount) {
-                        if (caller.equals(owner)) {
-                            this.logger.info(`Detected manual repay for account ${owner}`);
-                            return;
-                        }
+                        if (caller.equals(owner)) return;
 
                         const notifiedSubscribers = new Set<number>();
                         for (const subscriber of monitoredAccount.subscribers) {

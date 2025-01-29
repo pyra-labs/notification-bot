@@ -26,38 +26,96 @@ export class Telegram extends AppLogger {
             (ctx) => {
                 ctx.reply([
                     "Hey! Welcome to the Quartz Health Monitor Bot! 👋\n",
-                    "Use /track followed by your wallet address and a health percentage and I'll start monitoring your Quartz account health.",
+                    "I can send you notifications whenever your account health drops below a certain percentage, or if an auto-repay is triggered.",
                     "Use /help to see all available commands."
-                ].join("\n\n"));
+                ].join("\n"));
             }
         );
 
         this.bot.command(
             "help", 
             (ctx) => {
-                ctx.reply([
-                    "💎 Quartz Health Monitor Bot commands:\n",
-                    "/start \nStart the bot",
-                    "/help \nShow this message",
-                    "/track <address> <thresholds> \nSet account health percentage thresholds to be notified at. Eg: To be notified at 20% and 10%, use /track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10",
-                    "/stop <address> <thresholds> \nRemove account health percentage thresholds to be notified at. Eg: To no longer be notified at 20%, use /stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20",
-                    "/stop <address> \nRemove all account health percentage thresholds for a specified wallet",
-                    "/stop all \nRemove all account health percentage thresholds for all wallets",
-                    "/list \nList all wallets currently being monitored, and their health notification thresholds",
-                    "\nYou will also be notified if an auto-repay is triggered on any wallet you've set thresholds for"
-                ].join("\n\n"));
+                const command = ctx.message?.text?.split(" ")[1]?.trim();
+                if (!command) {
+                    ctx.reply([
+                        "💎 Quartz Health Monitor Bot commands:\n",
+                        "/start \nStart the bot",
+                        "/help \nShow this message",
+                        "/help <command> \nShow detailed help and examples for a command \nEg: /help /track",
+                        "/track <address> <thresholds> \nSet account health percentage thresholds to be notified at",
+                        "/stop <address> <thresholds> \nRemove account health percentage thresholds to be notified at",
+                        "/stop <address> \nRemove all account health percentage thresholds for a specified wallet",
+                        "/stop all \nRemove all account health percentage thresholds for all wallets",
+                        "/list \nList all wallets currently being monitored, and their health notification thresholds",
+                        "\nYou will also be notified if an auto\\-repay is triggered on any wallet you've set thresholds for"
+                    ].join("\n\n"));
+                    return;
+                }
+
+                switch (command) {
+                    case "/start":
+                        ctx.reply([
+                            "/start",
+                            "Start the bot"
+                        ].join("\n"));
+                        break;
+                    case "/help":
+                        ctx.reply([
+                            "/help",
+                            "Show all available commands",
+                            "",
+                            "Use /help \\<command\\> to see detailed help and examples for a specific command, eg: `/help /track`"
+                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        break;
+                    case "/track":
+                        ctx.reply([
+                            "/track \\<address\\> \\<thresholds\\>",
+                            "Set account health percentage thresholds to be notified at, specified as a comma\\-separated list of percentages\\. If you have any thresholds set for a wallet, you will also receive notifications when an auto\\-repay is triggered\\.",
+                            "",
+                            "Eg: To be notified at 20% and 10%, use `/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10`",
+                            "To be notified at 50%, use `/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 50`"
+                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        break;
+                    case "/stop":
+                        ctx.reply([
+                            "/stop \\<address\\> \\<thresholds\\>",
+                            "Remove account health percentage thresholds to be notified at",
+                            "",
+                            "Eg: To no longer be notified at 20%, use `/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20`"
+                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        ctx.reply([
+                            "/stop \\<address\\>",
+                            "Remove all account health percentage thresholds for a specified wallet\\. You will no longer be notified about account health or auto\\-repay for the account\\.",
+                            "",
+                            "Eg: To no longer be notified for D4c8\\.\\.\\.xa2m, use `/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m`"
+                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        ctx.reply([
+                            "/stop all",
+                            "Remove all account health percentage thresholds for all wallets\\. I will no longer send you any notifications\\."
+                        ].join("\n"));
+                        break;
+                    case "/list":
+                        ctx.reply([
+                            "/list",
+                            "List all wallets currently being monitored, their health notification thresholds, and their current account health"
+                        ].join("\n"));
+                        break;
+                    default:
+                        ctx.reply(`"${command}" isn't a valid command, use /help to see all available commands`);
+                        break;
+                }
             }
         );
 
         this.bot.command(
             "track",
             async (ctx) => {
-                const address = await this.validateAddress(ctx, "/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m");
+                const address = await this.validateAddress(ctx, "/track");
                 if (!address) return;
 
                 const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
                 if (!thresholds) {
-                    ctx.reply("You must specify an account health percentage threshold to be notified at. Eg, to be notified at 20% and 10%: /track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10");
+                    ctx.reply("You must specify an account health percentage threshold to be notified at. Use /help /track for details.");
                     return;
                 }
                 const thresholdsArray = thresholds.split(",").map(Number);
@@ -76,12 +134,7 @@ export class Telegram extends AppLogger {
             async (ctx) => {
                 const data = ctx.message?.text?.split(" ")[1];
                 if (!data) {
-                    ctx.reply([
-                        "Please include what you want me to stop monitoring:",
-                        "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10 will remove the 20% and 10% notification thresholds for D4c8...xa2m",
-                        "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m will remove all notification thresholds for D4c8...xa2m",
-                        "/stop all will stop monitoring all wallets"
-                    ].join("\n"));
+                    ctx.reply("Please include what you want me to stop monitoring. Use /help /stop for details.");
                     return;
                 }
 
@@ -90,7 +143,7 @@ export class Telegram extends AppLogger {
                     return;
                 }
                 
-                const address = await this.validateAddress(ctx, "/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m or /stop all");
+                const address = await this.validateAddress(ctx, "/stop");
                 if (!address) return;
 
                 const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
@@ -110,7 +163,7 @@ export class Telegram extends AppLogger {
                 const list = await getSubscriptions(ctx.chat.id);
 
                 if (list.length === 0) {
-                    ctx.reply("I'm not currently monitoring any accounts. Use /help to see how to add one.");
+                    ctx.reply("I'm not currently monitoring any accounts. Use /help /track to see how to add one.");
                     return;
                 }
 
@@ -158,7 +211,7 @@ export class Telegram extends AppLogger {
 
     private async validateAddress(
         ctx: Context,
-        correctUsage: string
+        command: string
     ): Promise<PublicKey | null> {
         try {
             const address = ctx.message?.text?.split(" ")[1];
@@ -166,8 +219,7 @@ export class Telegram extends AppLogger {
             return new PublicKey(address);
         } catch {
             await ctx.reply([
-                "That doesn't look like a valid Solana wallet address...",
-                `Please use the command like this: ${correctUsage}`
+                `That doesn't look like a valid Solana wallet address. Use /help ${command} for help.`,
             ].join("\n"));
             return null;
         }
