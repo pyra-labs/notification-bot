@@ -1,0 +1,279 @@
+import config from "./config/config.js";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { Telegram } from "./clients/telegramClient.js";
+import { getAddressDisplay } from "./utils/helpers.js";
+import { Supabase } from "./clients/supabaseClient.js";
+import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, } from "./config/constants.js";
+import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
+import type { MessageCompiledInstruction } from "@solana/web3.js";
+import { QuartzClient, retryWithBackoff, type QuartzUser } from "@quartz-labs/sdk";
+import { AppLogger } from "@quartz-labs/logger";
+
+export class HealthMonitorBot extends AppLogger {
+    private quartzClientPromise: Promise<QuartzClient>;
+
+    private telegram: Telegram;
+    private supabase: Supabase;
+    private monitoredAccounts: Map<string, MonitoredAccount>;
+    private loadedAccountsPromise: Promise<void>;
+
+    constructor() {
+        super({
+            name: "Health Monitor Bot",
+            dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
+        });
+
+        const connection = new Connection(config.RPC_URL);
+        this.quartzClientPromise = QuartzClient.fetchClient(connection);
+
+        this.telegram = new Telegram(
+            this.startMonitoring.bind(this),
+            this.stopMonitoring.bind(this),
+            this.getMonitoringList.bind(this)
+        );
+        this.supabase = new Supabase();
+        this.monitoredAccounts = new Map();
+        this.loadedAccountsPromise = this.loadStoredAccounts();
+    }
+
+    private async loadStoredAccounts(): Promise<void> {
+        const accounts = await this.supabase.getAccounts();
+
+        for (const account of accounts) {
+            this.monitoredAccounts.set(account.address, {
+                address: account.address,
+                chatId: account.chatId,
+                lastHealth: account.lastHealth,
+                notifyAtFirstThreshold: account.notifyAtFirstThreshold,
+                notifyAtSecondThreshold: account.notifyAtSecondThreshold
+            });
+        }
+    }
+
+    private async startMonitoring(address: string, chatId: number) {
+        const quartzClient = await this.quartzClientPromise;
+
+        let user: QuartzUser;
+        try {
+            user = await retryWithBackoff(
+                async () => quartzClient.getQuartzAccount(new PublicKey(address))
+            );
+        } catch {
+            await this.telegram.sendMessage(
+                chatId, 
+                "I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account."
+            );
+            return;
+        }
+
+        try {
+            const health = user.getHealth();
+            
+            if (this.monitoredAccounts.has(address)) {
+                await this.telegram.sendMessage(
+                    chatId, 
+                    `That account is already being monitored, it's current health is ${health}%`
+                );
+                return;
+            }
+
+            await this.supabase.addAccount(address, chatId, health);
+            this.monitoredAccounts.set(address, {
+                address: address,
+                chatId: chatId,
+                lastHealth: health,
+                notifyAtFirstThreshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
+                notifyAtSecondThreshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
+            });
+
+            await this.telegram.sendMessage(
+                chatId, 
+                `I've started monitoring your Quartz account health! I'll send you a message if:\n
+                - Your health drops below 25%\n
+                - Your health drops below 10%\n
+                - Your loan is auto-repaid using your collateral (at 0%)\n\n
+                Your current account health is ${health}%`
+            );
+            await this.telegram.sendMessage(
+                chatId, 
+                "Be sure to turn on notifications in your Telegram app to receive alerts! 🔔"
+            );
+            await this.telegram.sendMessage(
+                chatId, 
+                "Send /stop to stop receiving messages."
+            );
+            this.logger.info(`Started monitoring account ${address}`);
+
+        } catch (error) {
+            this.logger.error(`Error starting monitoring for account ${address}: ${error}`);
+            await this.telegram.sendMessage(
+                chatId, 
+                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+            );
+        }
+    }
+
+    private async stopMonitoring(chatId: number) {
+        try {
+            const addresses: string[] = [];
+            for (const [address, data] of this.monitoredAccounts.entries()) {
+                if (data.chatId === chatId) addresses.push(address);
+            }
+
+            if (addresses.length === 0) {
+                await this.telegram.sendMessage(
+                    chatId,
+                    "You don't have any accounts being monitored."
+                );
+                return;
+            }
+
+            await this.supabase.removeAccounts(addresses);
+            for (const address of addresses) {
+                this.monitoredAccounts.delete(address);
+            }
+
+            await this.telegram.sendMessage(
+                chatId,
+                `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
+            );
+            this.logger.info(`Stopped monitoring accounts: ${addresses.join(", ")}`);
+
+        } catch (error) {
+            this.logger.error(`Error stopping monitoring for chat ${chatId}: ${error}`);
+            await this.telegram.sendMessage(
+                chatId, 
+                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
+            );
+        }
+    }
+
+    private async getMonitoringList(chatId: number) {
+        const accounts = await this.supabase.getAccounts();
+        return accounts.filter(account => account.chatId === chatId);
+    }
+
+    public async start() {
+        const quartzClient = await this.quartzClientPromise;
+        await this.loadedAccountsPromise;
+        await this.setupAutoRepayListener();
+        this.logger.info(`Health Monitor Bot initialized with ${this.monitoredAccounts.size} accounts`);
+
+        setInterval(() => {
+            this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
+        }, 1000 * 60 * 60 * 24); // Every 24 hours
+
+        while (true) {
+            const entries = [...this.monitoredAccounts]
+            const owners = entries.map(entry => new PublicKey(entry[0]));
+
+            let users: (QuartzUser | null)[];
+            try {
+                users = await retryWithBackoff(
+                    async () => quartzClient.getMultipleQuartzAccounts(owners)
+                );
+            } catch (error) {
+                this.logger.error(`Error fetching users: ${error}`);
+                continue;
+            }
+
+            for (let i = 0; i < entries.length; i++) { 
+                const entry = entries[i];
+                if (!entry) continue;
+
+                const user = users[i];
+                const [address, accountData] = entry;
+                const displayAddress = getAddressDisplay(address);
+
+                if (!user) {
+                    this.logger.warn(`User not found for account ${address}`);
+                    continue;
+                }
+
+                let currentHealth: number;
+                let notifyAtFirstThreshold = accountData.notifyAtFirstThreshold;
+                let notifyAtSecondThreshold = accountData.notifyAtSecondThreshold;
+
+                try {
+                    currentHealth = user.getHealth();
+                    if (currentHealth === accountData.lastHealth) continue;
+
+                    if (notifyAtSecondThreshold && accountData.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
+                        notifyAtSecondThreshold = false;
+                        await this.telegram.sendMessage(
+                            accountData.chatId,
+                            `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
+                        );
+                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
+                    } else if (notifyAtFirstThreshold && accountData.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
+                        notifyAtFirstThreshold = false;
+                        await this.telegram.sendMessage(
+                            accountData.chatId,
+                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
+                        );
+                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
+                    }
+                } catch (error) {
+                    this.logger.error(`Error sending notification for ${address}: ${error}`);
+                    continue;
+                }
+
+                if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) notifyAtFirstThreshold = true;
+                if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) notifyAtSecondThreshold = true;
+
+                try {
+                    this.monitoredAccounts.set(address, {
+                        address: address,
+                        chatId: accountData.chatId,
+                        lastHealth: currentHealth,
+                        notifyAtFirstThreshold: notifyAtFirstThreshold,
+                        notifyAtSecondThreshold: notifyAtSecondThreshold
+                    });
+                    this.supabase.updateAccount(address, currentHealth, notifyAtFirstThreshold, notifyAtSecondThreshold);
+                } catch (error) {
+                    this.logger.error(`Error updating account ${address} in database: ${error}`);
+                }
+            }
+
+            await new Promise(resolve => setTimeout(resolve, LOOP_DELAY));
+        }
+    }
+
+    private async setupAutoRepayListener() {
+        const quartzClient = await this.quartzClientPromise;
+
+        const INSRTUCTION_NAME = "StartCollateralRepay";
+        const ACCOUNT_INDEX_OWNER = 3;
+        const ACCOUNT_INDEX_CALLER = 0;
+
+        quartzClient.listenForInstruction(
+            INSRTUCTION_NAME,
+            async (instruction: MessageCompiledInstruction, accountKeys: PublicKey[]) => {
+                const callerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
+                if (!callerIndex || !accountKeys[callerIndex]) return;
+                const caller = accountKeys[callerIndex].toString();
+
+                const ownerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
+                if (!ownerIndex || !accountKeys[ownerIndex]) return;
+                const owner = accountKeys[ownerIndex].toString();
+
+                const monitoredAccount = this.monitoredAccounts.get(owner);
+
+                if (monitoredAccount) {
+                    if (caller === owner) {
+                        this.logger.info(`Detected manual repay for account ${owner}`);
+                        return;
+                    }
+
+                    await this.telegram.sendMessage(
+                        monitoredAccount.chatId,
+                        `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
+                    );
+                    this.logger.info(`Sending auto-repay notification for account ${owner}`);
+                } else if (caller !== owner) {
+                    this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
+                }
+            }
+        )
+    }
+}

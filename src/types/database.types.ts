@@ -7,22 +7,70 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      monitored_accounts: {
+      accounts: {
+        Row: {
+          address: string
+          created_at: string
+          last_health: number
+          updated_at: string
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          last_health: number
+          updated_at?: string
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          last_health?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      monitored_accounts_old: {
         Row: {
           address: string
           chat_id: number
           last_health: number
           notify_at_first_threshold: boolean
           notify_at_second_threshold: boolean
+          updated_at: string | null
         }
         Insert: {
           address: string
           chat_id: number
           last_health: number
-          notify_at_first_threshold: boolean
-          notify_at_second_threshold: boolean
+          notify_at_first_threshold?: boolean
+          notify_at_second_threshold?: boolean
+          updated_at?: string | null
         }
         Update: {
           address?: string
@@ -30,15 +78,90 @@ export type Database = {
           last_health?: number
           notify_at_first_threshold?: boolean
           notify_at_second_threshold?: boolean
+          updated_at?: string | null
         }
         Relationships: []
+      }
+      subscribers: {
+        Row: {
+          address: string
+          chat_id: number
+          created_at: string
+          id: number
+        }
+        Insert: {
+          address: string
+          chat_id: number
+          created_at?: string
+          id?: number
+        }
+        Update: {
+          address?: string
+          chat_id?: number
+          created_at?: string
+          id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscribers_address_fkey"
+            columns: ["address"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["address"]
+          },
+        ]
+      }
+      thresholds: {
+        Row: {
+          created_at: string
+          id: number
+          notify: boolean
+          percentage: number
+          subscriber_id: number
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          notify?: boolean
+          percentage: number
+          subscriber_id: number
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          notify?: boolean
+          percentage?: number
+          subscriber_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thresholds_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      remove_threshold: {
+        Args: {
+          p_threshold_id: number
+        }
+        Returns: undefined
+      }
+      subscribe_to_wallet: {
+        Args: {
+          p_address: string
+          p_chat_id: number
+          p_threshold: number
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

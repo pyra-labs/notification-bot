@@ -10,9 +10,9 @@ export class Telegram extends AppLogger {
     public api: Api;
 
     constructor(
-        startMonitoring: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<void>,
-        stopMonitoring: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<void>,
-        getMonitoringList: (chatId: number) => Promise<MonitoredAccount[]>
+        subscribe: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<void>,
+        unsubscribe: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<void>,
+        getSubscriptions: (chatId: number) => Promise<MonitoredAccount[]>
     ) {
         super({
             name: "Health Monitor Bot - Telegram API",
@@ -25,12 +25,10 @@ export class Telegram extends AppLogger {
             "start", 
             (ctx) => {
                 ctx.reply([
-                    "Hey! Welcome to the Quartz Health Monitor Bot! 👋",
-                    "",
+                    "Hey! Welcome to the Quartz Health Monitor Bot! 👋\n",
                     "Use /track followed by your wallet address and a health percentage and I'll start monitoring your Quartz account health.",
                     "Use /help to see all available commands."
-                ].join("\n"));
-                this.logger.info("User started the bot");
+                ].join("\n\n"));
             }
         );
 
@@ -62,9 +60,14 @@ export class Telegram extends AppLogger {
                     ctx.reply("You must specify an account health percentage threshold to be notified at. Eg, to be notified at 20% and 10%: /track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10");
                     return;
                 }
-
                 const thresholdsArray = thresholds.split(",").map(Number);
-                await startMonitoring(ctx.chat.id, address, thresholdsArray);
+
+                if (thresholdsArray.some(threshold => threshold < 0 || threshold > 100)) {
+                    ctx.reply("Threshold percentages must be between 0 and 100");
+                    return;
+                }
+
+                await subscribe(ctx.chat.id, address, thresholdsArray);
             }
         );
 
@@ -83,7 +86,7 @@ export class Telegram extends AppLogger {
                 }
 
                 if (data === "all") {
-                    await stopMonitoring(ctx.chat.id);
+                    await unsubscribe(ctx.chat.id);
                     return;
                 }
                 
@@ -92,29 +95,38 @@ export class Telegram extends AppLogger {
 
                 const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
                 if (!thresholds) {
-                    await stopMonitoring(ctx.chat.id, address);
+                    await unsubscribe(ctx.chat.id, address);
                     return;
                 }
 
                 const thresholdsArray = thresholds.split(",").map(Number);
-                await stopMonitoring(ctx.chat.id, address, thresholdsArray);
+                await unsubscribe(ctx.chat.id, address, thresholdsArray);
             }
         );
 
         this.bot.command(
             "list",
             async (ctx) => {
-                const list = await getMonitoringList(ctx.chat.id);
+                const list = await getSubscriptions(ctx.chat.id);
+
+                if (list.length === 0) {
+                    ctx.reply("I'm not currently monitoring any accounts. Use /help to see how to add one.");
+                    return;
+                }
 
                 const listDisplay = list.map((account) => {
-                    const thresholdsDisplay = account.thresholds.map(
-                        threshold => `${threshold}%`
+                    const subscriber = account.subscribers.find(subscriber => subscriber.chatId === ctx.chat.id);
+                    if (!subscriber) throw new Error("Subscriber not found");
+
+                    const thresholds = subscriber.thresholds.map(
+                        threshold => `${threshold.percentage}%`
                     ).join(", ");
-                    return `${account.address.toBase58()} - ${thresholdsDisplay}`;
+
+                    return `${account.address.toBase58()} - ${thresholds}`;
                 }).join("\n");
 
                 ctx.reply([
-                    "I'm currently monitoring the following wallets. I will send a notification if auto-repay is triggered, or if their account health drops to the set percentages.",
+                    "I'm currently monitoring the following accounts. I'll send a notification if auto-repay is triggered, or if their account health drops to the set percentages:",
                     "",
                     listDisplay
                 ].join("\n"));

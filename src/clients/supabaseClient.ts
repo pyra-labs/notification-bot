@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database.types.js";
 import config from "../config/config.js";
-import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
-import { FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER } from "../config/constants.js";
+import { PublicKey } from "@solana/web3.js";
 import { retryWithBackoff } from "@quartz-labs/sdk";
+import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
+import type { Threshold } from "../interfaces/threshold.interface.js";
 
 export class Supabase {
     public supabase: SupabaseClient<Database>;
@@ -15,102 +16,204 @@ export class Supabase {
         );
     }
 
-    public async getAccounts(): Promise<MonitoredAccount[]> {
-        const accounts = await retryWithBackoff(
+    public async getAllAccounts(): Promise<MonitoredAccount[]> {
+        return await retryWithBackoff(
             async () => {
-                const { data, error } = await this.supabase
-                    .from('monitored_accounts')
-                    .select('*');
+                const { data: accounts, error } = await this.supabase
+                    .from('accounts')
+                    .select(`
+                        address,
+                        last_health,
+                        subscribers (
+                            chat_id,
+                            thresholds (
+                                percentage,
+                                notify
+                            )
+                        )
+                    `);
+
                 if (error) throw error;
-                return data;
-            }
-        );
-
-        const monitoredAccounts = accounts.map((account) => ({
-            address: account.address,
-            chatId: account.chat_id,
-            lastHealth: account.last_health,
-            notifyAtFirstThreshold: account.notify_at_first_threshold,
-            notifyAtSecondThreshold: account.notify_at_second_threshold,
-        }));
-
-        return monitoredAccounts;
-    }
-
-    public async addAccount(
-        address: string, 
-        chatId: number, 
-        health: number
-    ): Promise<void> {
-        if (await this.entryExists(address)) {
-            throw new Error(`Account ${address} already exists in Supabase`);
-        }
-
-        await retryWithBackoff(
-            async () => {
-                const { error } = await this.supabase
-                    .from('monitored_accounts')
-                    .insert({
-                        address: address,
-                        chat_id: chatId,
-                        last_health: health,
-                        notify_at_first_threshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
-                        notify_at_second_threshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
-                    });
-                if (error) throw error;
+                
+                return accounts.map(account => ({
+                    address: new PublicKey(account.address),
+                    lastHealth: account.last_health,
+                    subscribers: account.subscribers.map(sub => ({
+                        chatId: sub.chat_id,
+                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
+                    }))
+                }));
             }
         );
     }
 
-    public async updateAccount(
-        address: string, 
-        health: number,
-        notifyAtFirstThreshold: boolean,
-        notifyAtSecondThreshold: boolean
-    ): Promise<void> {
-        if (!await this.entryExists(address)) {
-            throw new Error(`Account ${address} does not exist in Supabase`);
-        }
-
-        await retryWithBackoff(
+    public async getMonitoredAccount(address: PublicKey): Promise<MonitoredAccount> {
+        return await retryWithBackoff(
             async () => {
-                const { error } = await this.supabase
-                    .from('monitored_accounts')
-                    .update({
-                        last_health: health,
-                        notify_at_first_threshold: notifyAtFirstThreshold,
-                        notify_at_second_threshold: notifyAtSecondThreshold
-                    })
-                    .eq('address', address);
-                if (error) throw error;
-            }
-        );
-    }
-
-    public async removeAccounts(addresses: string[]) {
-        await retryWithBackoff(
-            async () => {
-                const { error } = await this.supabase
-                    .from('monitored_accounts')
-                    .delete()
-                    .in('address', addresses);
-                if (error) throw error;
-            }
-        );
-    }
-
-    async entryExists(address: string): Promise<boolean> {
-        const entry = await retryWithBackoff(
-            async () => {
-                const { data, error } = await this.supabase
-                    .from('monitored_accounts')
-                    .select()
-                    .eq('address', address)
+                const { data: account, error } = await this.supabase
+                    .from('accounts')
+                    .select(`
+                        address,
+                        last_health,
+                        subscribers (
+                            chat_id,
+                            thresholds (
+                                percentage,
+                                notify
+                            )
+                        )
+                    `)
+                    .eq('address', address.toBase58())
                     .single();
+
+                if (error) throw error;
+
+                return {
+                    address: new PublicKey(account.address),
+                    lastHealth: account.last_health,
+                    subscribers: account.subscribers.map(sub => ({
+                        chatId: sub.chat_id,
+                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
+                    }))
+                };
+            }
+        );
+    }
+
+    public async getSubscriptions(chatId: number): Promise<MonitoredAccount[]> {
+        return await retryWithBackoff(
+            async () => {
+                const { data: accounts, error } = await this.supabase
+                    .from('accounts')
+                    .select(`
+                        address,
+                        last_health,
+                        subscribers!inner (
+                            chat_id,
+                            thresholds (
+                                percentage,
+                                notify
+                            )
+                        )
+                    `)
+                    .eq('subscribers.chat_id', chatId);
+                if (error) throw error;
+                
+                return accounts.map(account => ({
+                    address: new PublicKey(account.address),
+                    lastHealth: account.last_health,
+                    subscribers: account.subscribers.map(sub => ({
+                        chatId: sub.chat_id,
+                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
+                    }))
+                }));
+            }
+        );
+    }
+
+    public async getThresholds(address: PublicKey, chatId: number): Promise<Threshold[]> {
+        return await retryWithBackoff(
+            async () => {
+                const { data, error } = await this.supabase
+                    .from('subscribers')
+                    .select(`
+                        thresholds (
+                            percentage, 
+                            notify
+                        )
+                    `)
+                    .eq('address', address.toBase58())
+                    .eq('chat_id', chatId)
+                    .single();
+                
+                if (error) throw error;
+                return data.thresholds;
+            }
+        );
+    }
+
+    public async subscribeToWallet(address: PublicKey, chatId: number, threshold: number) {
+        if (threshold < 0 || threshold > 100) throw new Error("Threshold must be between 0 and 100");
+
+        return await retryWithBackoff(
+            async () => {
+                const { data, error } = await this.supabase.rpc('subscribe_to_wallet', {
+                    p_address: address.toBase58(),
+                    p_chat_id: chatId,
+                    p_threshold: threshold
+                });    
+
+                if (error) throw new Error(error.message);
+                return data;
+            }
+        )
+    }
+
+    public async removeThreshold(thresholdId: number) {
+        return await retryWithBackoff(
+            async () => {
+                const { data, error } = await this.supabase.rpc('remove_threshold', {
+                    p_threshold_id: thresholdId
+                });
+
+                if (error) throw new Error(error.message);
+                return data;
+            }
+        )
+    }
+
+    public async updateThreshold(thresholdId: number, percentage: number, notify: boolean) {
+        if (percentage < 0 || percentage > 100) throw new Error("Threshold must be between 0 and 100");
+
+        return await retryWithBackoff(
+            async () => {
+                const { data, error } = await this.supabase
+                    .from('thresholds')
+                    .update({ 
+                        percentage,
+                        notify
+                    })
+                    .eq('id', thresholdId)
+                    .select()
+                    .single();
+
                 if (error) throw error;
                 return data;
             }
-        );
-        return !!entry;
+        )
+    }
+
+    async getSubscriberId(address: PublicKey, chatId: number) {
+        return await retryWithBackoff(  
+            async () => {
+                const { data, error } = await this.supabase
+                    .from('subscribers')
+                    .select('id')
+                    .eq('address', address.toBase58())
+                    .eq('chat_id', chatId)
+                    .single();
+
+                if (error) throw error;
+                return data.id;
+            }
+        )
+    }
+
+    async getThresholdId(subscriberId: number, percentage: number) {
+        if (percentage < 0 || percentage > 100) throw new Error("Threshold must be between 0 and 100");
+
+        return await retryWithBackoff(
+            async () => {
+                const { data, error } = await this.supabase
+                    .from('thresholds')
+                    .select('id')
+                    .eq('subscriber_id', subscriberId)
+                    .eq('percentage', percentage)
+                    .single();
+
+                if (error) throw error;
+                return data.id;
+            }
+        )
     }
 }

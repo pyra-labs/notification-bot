@@ -1,21 +1,19 @@
 import config from "./config/config.js";
-import { Connection, PublicKey } from "@solana/web3.js";
 import { Telegram } from "./clients/telegramClient.js";
-import { getAddressDisplay } from "./utils/helpers.js";
 import { Supabase } from "./clients/supabaseClient.js";
-import { LOOP_DELAY, FIRST_THRESHOLD_WITH_BUFFER, SECOND_THRESHOLD_WITH_BUFFER, FIRST_THRESHOLD, SECOND_THRESHOLD, } from "./config/constants.js";
 import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
-import type { MessageCompiledInstruction } from "@solana/web3.js";
-import { QuartzClient, retryWithBackoff, type QuartzUser } from "@quartz-labs/sdk";
+import { QuartzClient } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
+import { Connection } from "@solana/web3.js";
+import type { PublicKey } from "@solana/web3.js";
 
 export class HealthMonitorBot extends AppLogger {
-    private quartzClientPromise: Promise<QuartzClient>;
-
     private telegram: Telegram;
     private supabase: Supabase;
-    private monitoredAccounts: Map<string, MonitoredAccount>;
-    private loadedAccountsPromise: Promise<void>;
+
+    private monitoredAccounts: Record<string, MonitoredAccount>;
+    private monitoredAccountsInitialized: Promise<void>;
+    private quartzClientPromise: Promise<QuartzClient>;
 
     constructor() {
         super({
@@ -27,247 +25,106 @@ export class HealthMonitorBot extends AppLogger {
         this.quartzClientPromise = QuartzClient.fetchClient(connection);
 
         this.telegram = new Telegram(
-            this.startMonitoring.bind(this),
-            this.stopMonitoring.bind(this)
+            this.subscribe.bind(this),
+            this.unsubscribe.bind(this),
+            this.getSubscriptions.bind(this)
         );
         this.supabase = new Supabase();
-        this.monitoredAccounts = new Map();
-        this.loadedAccountsPromise = this.loadStoredAccounts();
+        this.monitoredAccounts = {};
+        this.monitoredAccountsInitialized = this.loadStoredAccounts();
     }
 
     private async loadStoredAccounts(): Promise<void> {
-        const accounts = await this.supabase.getAccounts();
-
-        for (const account of accounts) {
-            this.monitoredAccounts.set(account.address, {
-                address: account.address,
-                chatId: account.chatId,
-                lastHealth: account.lastHealth,
-                notifyAtFirstThreshold: account.notifyAtFirstThreshold,
-                notifyAtSecondThreshold: account.notifyAtSecondThreshold
-            });
-        }
+        const accounts = await this.supabase.getAllAccounts();
+        this.monitoredAccounts = accounts.reduce((acc, account) => {
+            acc[account.address.toBase58()] = account;
+            return acc;
+        }, {} as Record<string, MonitoredAccount>);
     }
 
-    private async startMonitoring(address: string, chatId: number) {
-        const quartzClient = await this.quartzClientPromise;
+    private async subscribe(
+        chatId: number, 
+        address: PublicKey, 
+        thresholds: number[]
+    ) {
+        await this.monitoredAccountsInitialized;
 
-        let user: QuartzUser;
-        try {
-            user = await retryWithBackoff(
-                async () => quartzClient.getQuartzAccount(new PublicKey(address))
-            );
-        } catch {
-            await this.telegram.sendMessage(
-                chatId, 
-                "I couldn't find a Quartz account with this wallet address. Please send the address of a wallet that's been used to create a Quartz account."
-            );
+        if (thresholds.length === 0) {
+            throw new Error("No thresholds provided");
+        }
+
+        for (const threshold of thresholds) {
+            await this.supabase.subscribeToWallet(address, chatId, threshold);
+        }
+
+        const updatedAccount = await this.supabase.getMonitoredAccount(address);
+        this.monitoredAccounts[address.toBase58()] = updatedAccount;
+        
+        this.logger.info(`${chatId} subscribed to ${address.toBase58()} with thresholds ${thresholds.join(", ")}`);
+    }
+
+    private async unsubscribe(
+        chatId: number,
+        address?: PublicKey, 
+        thresholds?: number[]
+    ) {
+        await this.monitoredAccountsInitialized;
+
+        // Call unsubscribe on all addresses if none provided
+        if (!address) {
+            const subscriptions = await this.supabase.getSubscriptions(chatId);
+            for (const subscription of subscriptions) {
+                await this.unsubscribe(
+                    chatId, 
+                    subscription.address
+                );
+            }
             return;
         }
 
-        try {
-            const health = user.getHealth();
-            
-            if (this.monitoredAccounts.has(address)) {
-                await this.telegram.sendMessage(
-                    chatId, 
-                    `That account is already being monitored, it's current health is ${health}%`
-                );
-                return;
+        // Set thresholds to all thresholds if none provided
+        if (!thresholds || thresholds.length === 0) {
+            thresholds = await this.supabase.getThresholds(address, chatId)
+                .then(thresholds => thresholds.map(threshold => threshold.percentage));
+            if (!thresholds) {
+                throw new Error("No thresholds found");
             }
-
-            await this.supabase.addAccount(address, chatId, health);
-            this.monitoredAccounts.set(address, {
-                address: address,
-                chatId: chatId,
-                lastHealth: health,
-                notifyAtFirstThreshold: (health >= FIRST_THRESHOLD_WITH_BUFFER),
-                notifyAtSecondThreshold: (health >= SECOND_THRESHOLD_WITH_BUFFER)
-            });
-
-            await this.telegram.sendMessage(
-                chatId, 
-                `I've started monitoring your Quartz account health! I'll send you a message if:\n
-                - Your health drops below 25%\n
-                - Your health drops below 10%\n
-                - Your loan is auto-repaid using your collateral (at 0%)\n\n
-                Your current account health is ${health}%`
-            );
-            await this.telegram.sendMessage(
-                chatId, 
-                "Be sure to turn on notifications in your Telegram app to receive alerts! 🔔"
-            );
-            await this.telegram.sendMessage(
-                chatId, 
-                "Send /stop to stop receiving messages."
-            );
-            this.logger.info(`Started monitoring account ${address}`);
-
-        } catch (error) {
-            this.logger.error(`Error starting monitoring for account ${address}: ${error}`);
-            await this.telegram.sendMessage(
-                chatId, 
-                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
-            );
         }
+        
+        // Remove each threshold from database
+        const subscriberId = await this.supabase.getSubscriberId(address, chatId);
+        for (const threshold of thresholds) {
+            const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold);
+            await this.supabase.removeThreshold(thresholdId);
+        }
+
+        // Update local state
+        const updatedAccounts = await this.getSubscriptions(chatId);
+        for (const account of updatedAccounts) {
+            this.monitoredAccounts[account.address.toBase58()] = account;
+        }
+
+        this.logger.info(`${chatId} removed the thresholds ${thresholds.join(", ")} from ${address.toBase58()}`);
     }
 
-    private async stopMonitoring(chatId: number) {
-        try {
-            const addresses: string[] = [];
-            for (const [address, data] of this.monitoredAccounts.entries()) {
-                if (data.chatId === chatId) addresses.push(address);
-            }
-
-            if (addresses.length === 0) {
-                await this.telegram.sendMessage(
-                    chatId,
-                    "You don't have any accounts being monitored."
-                );
-                return;
-            }
-
-            await this.supabase.removeAccounts(addresses);
-            for (const address of addresses) {
-                this.monitoredAccounts.delete(address);
-            }
-
-            await this.telegram.sendMessage(
-                chatId,
-                `I've stopped monitoring your Quartz accounts. Just send another address if you want me to start monitoring again!`
-            );
-            this.logger.info(`Stopped monitoring accounts: ${addresses.join(", ")}`);
-
-        } catch (error) {
-            this.logger.error(`Error stopping monitoring for chat ${chatId}: ${error}`);
-            await this.telegram.sendMessage(
-                chatId, 
-                `Sorry, something went wrong. I've notified the team and we'll look into it ASAP.`
-            );
-        }
+    private async getSubscriptions(
+        chatId: number
+    ): Promise<MonitoredAccount[]> {
+        await this.monitoredAccountsInitialized;
+        return this.supabase.getSubscriptions(chatId);
     }
 
     public async start() {
-        const quartzClient = await this.quartzClientPromise;
-        await this.loadedAccountsPromise;
+        // const quartzClient = await this.quartzClientPromise;
+        await this.monitoredAccountsInitialized;
         await this.setupAutoRepayListener();
-        this.logger.info(`Health Monitor Bot initialized with ${this.monitoredAccounts.size} accounts`);
 
-        setInterval(() => {
-            this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
-        }, 1000 * 60 * 60 * 24); // Every 24 hours
+        this.logger.info(`Health Monitor Bot initialized with ${Object.keys(this.monitoredAccounts).length} accounts`);
 
-        while (true) {
-            const entries = [...this.monitoredAccounts]
-            const owners = entries.map(entry => new PublicKey(entry[0]));
-
-            let users: (QuartzUser | null)[];
-            try {
-                users = await retryWithBackoff(
-                    async () => quartzClient.getMultipleQuartzAccounts(owners)
-                );
-            } catch (error) {
-                this.logger.error(`Error fetching users: ${error}`);
-                continue;
-            }
-
-            for (let i = 0; i < entries.length; i++) { 
-                const entry = entries[i];
-                if (!entry) continue;
-
-                const user = users[i];
-                const [address, accountData] = entry;
-                const displayAddress = getAddressDisplay(address);
-
-                if (!user) {
-                    this.logger.warn(`User not found for account ${address}`);
-                    continue;
-                }
-
-                let currentHealth: number;
-                let notifyAtFirstThreshold = accountData.notifyAtFirstThreshold;
-                let notifyAtSecondThreshold = accountData.notifyAtSecondThreshold;
-
-                try {
-                    currentHealth = user.getHealth();
-                    if (currentHealth === accountData.lastHealth) continue;
-
-                    if (notifyAtSecondThreshold && accountData.lastHealth > SECOND_THRESHOLD && currentHealth <= SECOND_THRESHOLD) {
-                        notifyAtSecondThreshold = false;
-                        await this.telegram.sendMessage(
-                            accountData.chatId,
-                            `🚨 Your account health (${displayAddress}) has dropped to ${currentHealth}%. If you don't add more collateral, your loans will be auto-repaid at market rate!`
-                        );
-                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
-                    } else if (notifyAtFirstThreshold && accountData.lastHealth > FIRST_THRESHOLD && currentHealth <= FIRST_THRESHOLD) {
-                        notifyAtFirstThreshold = false;
-                        await this.telegram.sendMessage(
-                            accountData.chatId,
-                            `Your account health (${displayAddress}) has dropped to ${currentHealth}%. Please add more collateral to your account to avoid your loans being auto-repaid.`
-                        );
-                        this.logger.info(`Sending health warning to ${address} (was ${accountData.lastHealth}%, now ${currentHealth}%)`);
-                    }
-                } catch (error) {
-                    this.logger.error(`Error sending notification for ${address}: ${error}`);
-                    continue;
-                }
-
-                if (currentHealth >= FIRST_THRESHOLD_WITH_BUFFER) notifyAtFirstThreshold = true;
-                if (currentHealth >= SECOND_THRESHOLD_WITH_BUFFER) notifyAtSecondThreshold = true;
-
-                try {
-                    this.monitoredAccounts.set(address, {
-                        address: address,
-                        chatId: accountData.chatId,
-                        lastHealth: currentHealth,
-                        notifyAtFirstThreshold: notifyAtFirstThreshold,
-                        notifyAtSecondThreshold: notifyAtSecondThreshold
-                    });
-                    this.supabase.updateAccount(address, currentHealth, notifyAtFirstThreshold, notifyAtSecondThreshold);
-                } catch (error) {
-                    this.logger.error(`Error updating account ${address} in database: ${error}`);
-                }
-            }
-
-            await new Promise(resolve => setTimeout(resolve, LOOP_DELAY));
-        }
+        // TODO: Implement
     }
 
     private async setupAutoRepayListener() {
-        const quartzClient = await this.quartzClientPromise;
-
-        const INSRTUCTION_NAME = "StartCollateralRepay";
-        const ACCOUNT_INDEX_OWNER = 3;
-        const ACCOUNT_INDEX_CALLER = 0;
-
-        quartzClient.listenForInstruction(
-            INSRTUCTION_NAME,
-            async (instruction: MessageCompiledInstruction, accountKeys: PublicKey[]) => {
-                const callerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
-                if (!callerIndex || !accountKeys[callerIndex]) return;
-                const caller = accountKeys[callerIndex].toString();
-
-                const ownerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
-                if (!ownerIndex || !accountKeys[ownerIndex]) return;
-                const owner = accountKeys[ownerIndex].toString();
-
-                const monitoredAccount = this.monitoredAccounts.get(owner);
-
-                if (monitoredAccount) {
-                    if (caller === owner) {
-                        this.logger.info(`Detected manual repay for account ${owner}`);
-                        return;
-                    }
-
-                    await this.telegram.sendMessage(
-                        monitoredAccount.chatId,
-                        `💰 Your loans for account ${getAddressDisplay(owner)} have automatically been repaid by selling your collateral at market rate.`
-                    );
-                    this.logger.info(`Sending auto-repay notification for account ${owner}`);
-                } else if (caller !== owner) {
-                    this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
-                }
-            }
-        )
+        // TODO: Implement
     }
 }
