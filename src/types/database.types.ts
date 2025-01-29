@@ -55,33 +55,6 @@ export type Database = {
         }
         Relationships: []
       }
-      monitored_accounts_old: {
-        Row: {
-          address: string
-          chat_id: number
-          last_health: number
-          notify_at_first_threshold: boolean
-          notify_at_second_threshold: boolean
-          updated_at: string | null
-        }
-        Insert: {
-          address: string
-          chat_id: number
-          last_health: number
-          notify_at_first_threshold?: boolean
-          notify_at_second_threshold?: boolean
-          updated_at?: string | null
-        }
-        Update: {
-          address?: string
-          chat_id?: number
-          last_health?: number
-          notify_at_first_threshold?: boolean
-          notify_at_second_threshold?: boolean
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       subscribers: {
         Row: {
           address: string
@@ -148,20 +121,47 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      remove_threshold: {
-        Args: {
-          p_threshold_id: number
-        }
-        Returns: undefined
-      }
-      subscribe_to_wallet: {
+      get_threshold_id: {
         Args: {
           p_address: string
           p_chat_id: number
-          p_threshold: number
+          p_percentage: number
         }
-        Returns: Json
+        Returns: number
       }
+      remove_threshold:
+        | {
+            Args: {
+              p_address: string
+              p_chat_id: number
+              p_percentage: number
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_threshold_id: number
+            }
+            Returns: undefined
+          }
+      subscribe_to_wallet:
+        | {
+            Args: {
+              p_address: string
+              p_chat_id: number
+              p_threshold: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_address: string
+              p_chat_id: number
+              p_threshold: number
+              p_last_health: number
+            }
+            Returns: Json
+          }
     }
     Enums: {
       [_ in never]: never

@@ -10,7 +10,7 @@ export class Telegram extends AppLogger {
     public api: Api;
 
     constructor(
-        subscribe: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<void>,
+        subscribe: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<number>,
         unsubscribe: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<void>,
         getSubscriptions: (chatId: number) => Promise<MonitoredAccount[]>
     ) {
@@ -177,8 +177,12 @@ export class Telegram extends AppLogger {
         chatId: number,
         text: string
     ) {
-        await retryWithBackoff(
-            () => this.api.sendMessage(chatId, text)
-        );
+        try {
+            await retryWithBackoff(
+                () => this.api.sendMessage(chatId, text)
+            );
+        } catch (error) {
+            this.logger.error(`Error sending message to ${chatId} "${text}"... Error: ${error}`);
+        }
     }
 }
