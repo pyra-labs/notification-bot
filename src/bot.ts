@@ -1,7 +1,7 @@
 import config from "./config/config.js";
-import { Telegram } from "./clients/telegramClient.js";
-import { Supabase } from "./clients/supabaseClient.js";
-import type { MonitoredAccount } from "./interfaces/monitoredAccount.interface.js";
+import { Telegram } from "./clients/telegram.client.js";
+import { Supabase } from "./clients/supabase.client.js";
+import type { MonitoredAccount } from "./types/interfaces/monitoredAccount.interface.js";
 import { QuartzClient, type QuartzUser, retryWithBackoff } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
 import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";

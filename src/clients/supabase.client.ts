@@ -3,8 +3,8 @@ import type { Database } from "../types/database.types.js";
 import config from "../config/config.js";
 import { PublicKey } from "@solana/web3.js";
 import { retryWithBackoff } from "@quartz-labs/sdk";
-import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
-import type { Threshold } from "../interfaces/threshold.interface.js";
+import type { MonitoredAccount } from "../types/interfaces/monitoredAccount.interface.js";
+import type { Threshold } from "../types/interfaces/threshold.interface.js";
 
 export class Supabase {
     public supabase: SupabaseClient<Database>;

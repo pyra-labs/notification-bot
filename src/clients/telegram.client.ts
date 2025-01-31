@@ -3,7 +3,7 @@ import config from "../config/config.js";
 import { AppLogger } from "@quartz-labs/logger";
 import { retryWithBackoff } from "@quartz-labs/sdk";
 import { PublicKey } from "@solana/web3.js";
-import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
+import type { MonitoredAccount } from "../types/interfaces/monitoredAccount.interface.js";
 import { displayAddress } from "../utils/helpers.js";
 import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "../config/errors.js";
 
