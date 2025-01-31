@@ -147,6 +147,7 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async getExitingThresholds(address: PublicKey, chatId: number): Promise<number[]> {
+        await this.monitoredAccountsInitialized;
         const monitoredAccount = await this.getSubscriptions(chatId)
             .then(subs => subs.find(sub => sub.address.equals(address)))
         const existingSubscription = monitoredAccount?.subscribers.find(subscriber => subscriber.chatId === chatId);
