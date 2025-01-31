@@ -8,7 +8,7 @@ import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import { displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
-import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError } from "./config/errors.js";
+import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "./config/errors.js";
 
 export class HealthMonitorBot extends AppLogger {
     private telegram: Telegram;
@@ -55,15 +55,16 @@ export class HealthMonitorBot extends AppLogger {
         let health: number;
         try {
             const user = await retryWithBackoff(
-                async () => quartzClient.getQuartzAccount(address)
+                async () => quartzClient.getQuartzAccount(address),
+                3
             );
             health = user.getHealth();
         } catch {
-            throw new Error("User not found");
+            throw new UserNotFound(address);
         }
 
         if (thresholds.length === 0) {
-            throw new Error("No thresholds provided");
+            throw new NoThresholdsError(address);
         }
 
         const existingThresholds = await this.getExitingThresholds(address, chatId);

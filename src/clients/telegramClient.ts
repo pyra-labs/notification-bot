@@ -5,7 +5,7 @@ import { retryWithBackoff } from "@quartz-labs/sdk";
 import { PublicKey } from "@solana/web3.js";
 import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
 import { displayAddress } from "../utils/helpers.js";
-import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError } from "../config/errors.js";
+import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "../config/errors.js";
 
 export class Telegram extends AppLogger {
     public bot: Bot;
@@ -37,7 +37,7 @@ export class Telegram extends AppLogger {
         this.bot.command(
             "help", 
             async (ctx) => {
-                const command = ctx.message?.text?.split(" ")[1]?.trim();
+                const command = ctx.message?.text?.split(" ")[1]?.trim().replace(/^\//, "");
                 if (!command) {
                     await this.reply(ctx, [
                         "💎 Quartz Health Monitor Bot commands:\n",
@@ -55,13 +55,13 @@ export class Telegram extends AppLogger {
                 }
 
                 switch (command) {
-                    case "/start":
+                    case "start":
                         await this.reply(ctx, [
                             "/start",
                             "Start the bot"
                         ].join("\n"));
                         break;
-                    case "/help":
+                    case "help":
                         await this.reply(ctx, [
                             "/help",
                             "Show all available commands",
@@ -69,7 +69,7 @@ export class Telegram extends AppLogger {
                             "Use /help \\<command\\> to see detailed help and examples for a specific command, eg: `/help /track`"
                         ].join("\n"), true);
                         break;
-                    case "/track":
+                    case "track":
                         await this.reply(ctx, [
                             "/track \\<address\\> \\<thresholds\\>",
                             "Set account health percentage thresholds to be notified at, specified as a comma\\-separated list of percentages\\. If you have any thresholds set for a wallet, you will also receive notifications when an auto\\-repay is triggered\\.",
@@ -78,7 +78,7 @@ export class Telegram extends AppLogger {
                             "To be notified at 50%, use `/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 50`"
                         ].join("\n"), true);
                         break;
-                    case "/stop":
+                    case "stop":
                         await this.reply(ctx, [
                             "/stop \\<address\\> \\<thresholds\\>",
                             "Remove account health percentage thresholds to be notified at",
@@ -96,7 +96,7 @@ export class Telegram extends AppLogger {
                             "Remove all account health percentage thresholds for all wallets. I will no longer send you any notifications."
                         ].join("\n"));
                         break;
-                    case "/list":
+                    case "list":
                         await this.reply(ctx, [
                             "/list",
                             "List all wallets currently being monitored, their health notification thresholds, and their current account health"
@@ -127,11 +127,18 @@ export class Telegram extends AppLogger {
                     return;
                 }
 
+                if (thresholdsArray.some(threshold => Number.isNaN(Number(threshold)) || !Number.isInteger(Number(threshold)))) {
+                    await this.reply(ctx, "Threshold percentages must be provided as whole numbers. Use /help /track for details.");
+                    return;
+                }
+
                 try {
                     const health = await subscribe(ctx.chat.id, address, thresholdsArray);
                     await this.reply(ctx, `🔎 I've started monitoring ${displayAddress(address)}! Your current account health is ${health}%`);
                 } catch (error) {
-                    if (error instanceof ExistingThresholdError) {
+                    if (error instanceof UserNotFound) {
+                        await this.reply(ctx, `Error: Could not find Quartz user for wallet address ${address.toBase58()}`);
+                    } else if (error instanceof ExistingThresholdError) {
                         await this.reply(ctx, `Error: Threshold ${error.percentage}% already exists for ${displayAddress(address)}`);
                     } else {
                         await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
