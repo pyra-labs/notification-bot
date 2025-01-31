@@ -5,6 +5,7 @@ import { retryWithBackoff } from "@quartz-labs/sdk";
 import { PublicKey } from "@solana/web3.js";
 import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
 import { displayAddress } from "../utils/helpers.js";
+import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError } from "../config/errors.js";
 
 export class Telegram extends AppLogger {
     public bot: Bot;
@@ -12,7 +13,7 @@ export class Telegram extends AppLogger {
 
     constructor(
         subscribe: (chatId: number, address: PublicKey, thresholds: number[]) => Promise<number>,
-        unsubscribe: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<void>,
+        unsubscribe: (chatId: number, address?: PublicKey, thresholds?: number[]) => Promise<boolean>,
         getSubscriptions: (chatId: number) => Promise<MonitoredAccount[]>
     ) {
         super({
@@ -24,8 +25,8 @@ export class Telegram extends AppLogger {
 
         this.bot.command(
             "start", 
-            (ctx) => {
-                ctx.reply([
+            async (ctx) => {
+                await this.reply(ctx, [
                     "Hey! Welcome to the Quartz Health Monitor Bot! 👋\n",
                     "I can send you notifications whenever your account health drops below a certain percentage, or if an auto-repay is triggered.",
                     "Use /help to see all available commands."
@@ -35,10 +36,10 @@ export class Telegram extends AppLogger {
 
         this.bot.command(
             "help", 
-            (ctx) => {
+            async (ctx) => {
                 const command = ctx.message?.text?.split(" ")[1]?.trim();
                 if (!command) {
-                    ctx.reply([
+                    await this.reply(ctx, [
                         "💎 Quartz Health Monitor Bot commands:\n",
                         "/start \nStart the bot",
                         "/help \nShow this message",
@@ -55,54 +56,54 @@ export class Telegram extends AppLogger {
 
                 switch (command) {
                     case "/start":
-                        ctx.reply([
+                        await this.reply(ctx, [
                             "/start",
                             "Start the bot"
                         ].join("\n"));
                         break;
                     case "/help":
-                        ctx.reply([
+                        await this.reply(ctx, [
                             "/help",
                             "Show all available commands",
                             "",
                             "Use /help \\<command\\> to see detailed help and examples for a specific command, eg: `/help /track`"
-                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        ].join("\n"), true);
                         break;
                     case "/track":
-                        ctx.reply([
+                        await this.reply(ctx, [
                             "/track \\<address\\> \\<thresholds\\>",
                             "Set account health percentage thresholds to be notified at, specified as a comma\\-separated list of percentages\\. If you have any thresholds set for a wallet, you will also receive notifications when an auto\\-repay is triggered\\.",
                             "",
                             "Eg: To be notified at 20% and 10%, use `/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20,10`",
                             "To be notified at 50%, use `/track D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 50`"
-                        ].join("\n"), { parse_mode: "MarkdownV2" });
+                        ].join("\n"), true);
                         break;
                     case "/stop":
-                        ctx.reply([
+                        await this.reply(ctx, [
                             "/stop \\<address\\> \\<thresholds\\>",
                             "Remove account health percentage thresholds to be notified at",
                             "",
                             "Eg: To no longer be notified at 20%, use `/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m 20`"
-                        ].join("\n"), { parse_mode: "MarkdownV2" });
-                        ctx.reply([
+                        ].join("\n"), true);
+                        await this.reply(ctx, [
                             "/stop \\<address\\>",
                             "Remove all account health percentage thresholds for a specified wallet\\. You will no longer be notified about account health or auto\\-repay for the account\\.",
                             "",
                             "Eg: To no longer be notified for D4c8\\.\\.\\.xa2m, use `/stop D4c8Pf2zKJpueLoj7CZXYmdgJQAT9FVXySAxURQDxa2m`"
-                        ].join("\n"), { parse_mode: "MarkdownV2" });
-                        ctx.reply([
+                        ].join("\n"), true);
+                        await this.reply(ctx, [
                             "/stop all",
-                            "Remove all account health percentage thresholds for all wallets\\. I will no longer send you any notifications\\."
+                            "Remove all account health percentage thresholds for all wallets. I will no longer send you any notifications."
                         ].join("\n"));
                         break;
                     case "/list":
-                        ctx.reply([
+                        await this.reply(ctx, [
                             "/list",
                             "List all wallets currently being monitored, their health notification thresholds, and their current account health"
                         ].join("\n"));
                         break;
                     default:
-                        ctx.reply(`"${command}" isn't a valid command, use /help to see all available commands`);
+                        await this.reply(ctx, `"${command}" isn't a valid command, use /help to see all available commands`);
                         break;
                 }
             }
@@ -116,18 +117,27 @@ export class Telegram extends AppLogger {
 
                 const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
                 if (!thresholds) {
-                    ctx.reply("You must specify an account health percentage threshold to be notified at. Use /help /track for details.");
+                    await this.reply(ctx, "You must specify an account health percentage threshold to be notified at. Use /help /track for details.");
                     return;
                 }
                 const thresholdsArray = thresholds.split(",").map(Number);
 
-                if (thresholdsArray.some(threshold => threshold < 0 || threshold > 100)) {
-                    ctx.reply("Threshold percentages must be between 0 and 100");
+                if (thresholdsArray.some(threshold => threshold <= 0 || threshold >= 100)) {
+                    await this.reply(ctx, "Threshold percentages must be between 0 and 100");
                     return;
                 }
 
-                const health = await subscribe(ctx.chat.id, address, thresholdsArray);
-                ctx.reply(`I've started monitoring ${displayAddress(address)}! Your current account health is ${health}%`);
+                try {
+                    const health = await subscribe(ctx.chat.id, address, thresholdsArray);
+                    await this.reply(ctx, `🔎 I've started monitoring ${displayAddress(address)}! Your current account health is ${health}%`);
+                } catch (error) {
+                    if (error instanceof ExistingThresholdError) {
+                        await this.reply(ctx, `Error: Threshold ${error.percentage}% already exists for ${displayAddress(address)}`);
+                    } else {
+                        await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                        throw error;
+                    }
+                }
             }
         );
 
@@ -136,12 +146,22 @@ export class Telegram extends AppLogger {
             async (ctx) => {
                 const data = ctx.message?.text?.split(" ")[1];
                 if (!data) {
-                    ctx.reply("Please include what you want me to stop monitoring. Use /help /stop for details.");
+                    await this.reply(ctx, "Please include what you want me to stop monitoring. Use /help /stop for details.");
                     return;
                 }
 
                 if (data === "all") {
-                    await unsubscribe(ctx.chat.id);
+                    try {
+                        await unsubscribe(ctx.chat.id);
+                        await this.reply(ctx, "🗑️ I've stopped monitoring all accounts, you won't receive any more notifications from me!");
+                    } catch (error) {
+                        if (error instanceof NoThresholdsError) {
+                            await this.reply(ctx, "I'm not currently monitoring any accounts. Use /help /track to see how to add one.");
+                        } else {
+                            await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                            throw error;
+                        }
+                    }
                     return;
                 }
                 
@@ -150,37 +170,81 @@ export class Telegram extends AppLogger {
 
                 const thresholds = ctx.message?.text?.split(address.toBase58())[1]?.replace(/\s+/g, '');
                 if (!thresholds) {
-                    await unsubscribe(ctx.chat.id, address);
+                    try {
+                        await unsubscribe(ctx.chat.id, address);
+                        await this.reply(ctx, `🗑️ I've removed all thresholds from ${displayAddress(address)}, you won't receive any more notifications for this account.`);
+                    } catch (error) {
+                        if (error instanceof NoThresholdsError) {
+                            await this.reply(ctx, `I'm not currently monitoring any thresholds for ${displayAddress(address)}. Use /help /track to see how to add one.`);
+                        } else {
+                            await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                            throw error;
+                        }
+                    }
                     return;
                 }
 
                 const thresholdsArray = thresholds.split(",").map(Number);
-                await unsubscribe(ctx.chat.id, address, thresholdsArray);
+
+                try {
+                    const noRemainingThresholds = await unsubscribe(ctx.chat.id, address, thresholdsArray);
+
+                    if (noRemainingThresholds) {
+                        await this.reply(ctx, `🗑️ I've removed all thresholds from ${displayAddress(address)}, you won't receive any more notifications for this account.`);
+                    } else {
+                        const plural = thresholdsArray.length > 1 ? "s" : "";
+                        await this.reply(ctx, `🗑️ I've removed the threshold${plural} ${thresholdsArray.join(", ")}% for ${displayAddress(address)}.`);
+                    }
+                } catch (error) {
+                    if (error instanceof ThresholdNotFoundError) {
+                        await this.reply(ctx, `Error: Threshold ${error.message} not found for ${displayAddress(address)}`);
+                    } else {
+                        await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                        throw error;
+                    }
+                }
             }
         );
 
         this.bot.command(
             "list",
             async (ctx) => {
-                const list = await getSubscriptions(ctx.chat.id);
+                let list: MonitoredAccount[];
+                try {
+                    list = await getSubscriptions(ctx.chat.id);
+                } catch (error) {
+                    await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                    throw error;
+                }
 
                 if (list.length === 0) {
-                    ctx.reply("I'm not currently monitoring any accounts. Use /help /track to see how to add one.");
+                    await this.reply(ctx, "I'm not currently monitoring any accounts. Use /help /track to see how to add one.");
                     return;
                 }
 
-                const listDisplay = list.map((account) => {
-                    const subscriber = account.subscribers.find(subscriber => subscriber.chatId === ctx.chat.id);
-                    if (!subscriber) throw new Error("Subscriber not found");
+                let listDisplay: string;
+                try {
+                    listDisplay = list.map((account) => {
+                        const subscriber = account.subscribers.find(subscriber => subscriber.chatId === ctx.chat.id);
+                        if (!subscriber) throw new Error("Subscriber not found");
 
-                    const thresholds = subscriber.thresholds.map(
-                        threshold => `${threshold.percentage}%`
-                    ).join(", ");
+                        const thresholds = subscriber.thresholds.map(
+                            threshold => threshold.percentage
+                        ).sort((a, b) => a - b);
 
-                    return `${account.address.toBase58()} \nHealth: ${account.lastHealth}% \nNotification thresholds: ${thresholds}`;
-                }).join("\n\n");
+                        const percentages = thresholds.map(
+                            percentage => `${percentage}%`
+                        ).join(", ");
 
-                ctx.reply([
+                        return `${account.address.toBase58()} \nHealth: ${account.lastHealth}% \nNotification thresholds: ${percentages}`;
+                        }
+                    ).join("\n\n");
+                } catch (error) {
+                    await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
+                    throw error;
+                }
+
+                await this.reply(ctx, [
                     "I'm currently monitoring the following accounts. I'll send a notification if auto-repay is triggered, or if their account health drops to the set percentages:",
                     "",
                     listDisplay
@@ -191,7 +255,7 @@ export class Telegram extends AppLogger {
         this.bot.on(
             "message:text", 
             async (ctx) => {
-                ctx.reply("I didn't get that... Use /help to see all available commands.");
+                await this.reply(ctx, "I didn't get that... Use /help to see all available commands.");
             }
         );
 
@@ -220,10 +284,24 @@ export class Telegram extends AppLogger {
             if (!address) throw new Error("No address provided");
             return new PublicKey(address);
         } catch {
-            await ctx.reply([
+            await this.reply(ctx, [
                 `That doesn't look like a valid Solana wallet address. Use /help ${command} for help.`,
             ].join("\n"));
             return null;
+        }
+    }
+
+    private async reply(
+        ctx: Context,
+        text: string,
+        markdown = false
+    ) {
+        try {
+            await retryWithBackoff(
+                () => ctx.reply(text, { parse_mode: markdown ? "MarkdownV2" : undefined })
+            );
+        } catch (error) {
+            this.logger.error(`Error sending message to ${ctx.chat?.id} "${text}"... Error: ${error}`);
         }
     }
 

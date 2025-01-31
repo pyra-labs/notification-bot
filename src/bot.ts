@@ -8,6 +8,7 @@ import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import { displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
+import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError } from "./config/errors.js";
 
 export class HealthMonitorBot extends AppLogger {
     private telegram: Telegram;
@@ -65,7 +66,11 @@ export class HealthMonitorBot extends AppLogger {
             throw new Error("No thresholds provided");
         }
 
+        const existingThresholds = await this.getExitingThresholds(address, chatId);
         for (const threshold of thresholds) {
+            if (existingThresholds?.includes(threshold)) {
+                throw new ExistingThresholdError(threshold);
+            }
             await this.supabase.subscribeToWallet(address, chatId, threshold, health);
         }
 
@@ -80,7 +85,7 @@ export class HealthMonitorBot extends AppLogger {
         chatId: number,
         address?: PublicKey, 
         thresholds?: number[]
-    ) {
+    ): Promise<boolean> {
         await this.monitoredAccountsInitialized;
 
         // Call unsubscribe on all addresses if none provided
@@ -92,7 +97,12 @@ export class HealthMonitorBot extends AppLogger {
                     subscription.address
                 );
             }
-            return;
+            return true;
+        }
+
+        const existingThresholds = await this.getExitingThresholds(address, chatId);
+        if (existingThresholds.length === 0) {
+            throw new NoThresholdsError(address);
         }
 
         // Set thresholds to all thresholds if none provided
@@ -100,24 +110,32 @@ export class HealthMonitorBot extends AppLogger {
             thresholds = await this.supabase.getThresholds(address, chatId)
                 .then(thresholds => thresholds.map(threshold => threshold.percentage));
             if (!thresholds) {
-                throw new Error("No thresholds found");
+                throw new NoThresholdsError(address);
             }
         }
         
         // Remove each threshold from database
         const subscriberId = await this.supabase.getSubscriberId(address, chatId);
         for (const threshold of thresholds) {
+            if (!existingThresholds.includes(threshold)) {
+                throw new ThresholdNotFoundError(threshold);
+            }
             const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold);
             await this.supabase.removeThreshold(thresholdId);
         }
 
         // Update local state
+        let noRemainingThresholds = true; 
         const updatedAccounts = await this.getSubscriptions(chatId);
         for (const account of updatedAccounts) {
             this.monitoredAccounts[account.address.toBase58()] = account;
+            if (account.address.equals(address)) {
+                noRemainingThresholds = false; // If the account is still in the subscriptions, there are still thresholds
+            }
         }
 
-        this.logger.info(`${chatId} removed the thresholds ${thresholds.join(", ")} from ${address.toBase58()}`);
+        this.logger.info(`${chatId} removed the thresholds ${thresholds.join(", ")} from ${address.toBase58()}`);   
+        return noRemainingThresholds;
     }
 
     private async getSubscriptions(
@@ -125,6 +143,14 @@ export class HealthMonitorBot extends AppLogger {
     ): Promise<MonitoredAccount[]> {
         await this.monitoredAccountsInitialized;
         return this.supabase.getSubscriptions(chatId);
+    }
+
+    private async getExitingThresholds(address: PublicKey, chatId: number): Promise<number[]> {
+        const monitoredAccount = await this.getSubscriptions(chatId)
+            .then(subs => subs.find(sub => sub.address.equals(address)))
+        const existingSubscription = monitoredAccount?.subscribers.find(subscriber => subscriber.chatId === chatId);
+        const thresholds = existingSubscription?.thresholds.map(threshold => threshold.percentage);
+        return thresholds ?? [];
     }
 
     public async start() {
