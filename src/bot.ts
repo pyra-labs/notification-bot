@@ -181,11 +181,14 @@ export class HealthMonitorBot extends AppLogger {
         const notifiedSubscribers = new Set<number>();
         for (const subscriber of account.subscribers) {
             const subscriberId = await this.supabase.getSubscriberId(account.address, subscriber.chatId);
-            let smallestThresholdPercentage = 100;
+            let updatedData = false;
+            let notify = false;
 
             for (const threshold of subscriber.thresholds) {
                 if (!threshold.notify) {
                     if (health === 100 || health >= threshold.percentage + 5) {
+                        updatedData = true;
+
                         // Enable notifications (has reached 5% above threshold)
                         const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
                         await this.supabase.updateThreshold(thresholdId, threshold.percentage, true);
@@ -194,21 +197,24 @@ export class HealthMonitorBot extends AppLogger {
                 }
 
                 if (health <= threshold.percentage) {
+                    updatedData = true;
+                    notify = true;
+
                     // Disable notifications (until it rises 5% above)
                     const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
                     await this.supabase.updateThreshold(thresholdId, threshold.percentage, false);
-
-                    smallestThresholdPercentage = Math.min(smallestThresholdPercentage, threshold.percentage);
                 }
             }
+
+            if (!updatedData) continue;
 
             const updatedAccount = await this.supabase.getMonitoredAccount(account.address);
             this.monitoredAccounts[account.address.toBase58()] = updatedAccount;
 
-            if (smallestThresholdPercentage !== 100) {
+            if (notify) {
                 await this.telegram.sendMessage(
                     subscriber.chatId,
-                    `🚨 Your account health (${displayAddress(account.address)}) has dropped to ${smallestThresholdPercentage}%.`
+                    `🚨 Your account health (${displayAddress(account.address)}) has dropped to ${health}%.`
                 );
                 notifiedSubscribers.add(subscriber.chatId);
             }

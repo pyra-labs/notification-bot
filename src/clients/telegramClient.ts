@@ -4,6 +4,7 @@ import { AppLogger } from "@quartz-labs/logger";
 import { retryWithBackoff } from "@quartz-labs/sdk";
 import { PublicKey } from "@solana/web3.js";
 import type { MonitoredAccount } from "../interfaces/monitoredAccount.interface.js";
+import { displayAddress } from "../utils/helpers.js";
 
 export class Telegram extends AppLogger {
     public bot: Bot;
@@ -125,7 +126,8 @@ export class Telegram extends AppLogger {
                     return;
                 }
 
-                await subscribe(ctx.chat.id, address, thresholdsArray);
+                const health = await subscribe(ctx.chat.id, address, thresholdsArray);
+                ctx.reply(`I've started monitoring ${displayAddress(address)}! Your current account health is ${health}%`);
             }
         );
 
@@ -175,8 +177,8 @@ export class Telegram extends AppLogger {
                         threshold => `${threshold.percentage}%`
                     ).join(", ");
 
-                    return `${account.address.toBase58()} - ${thresholds}`;
-                }).join("\n");
+                    return `${account.address.toBase58()} \nHealth: ${account.lastHealth}% \nNotification thresholds: ${thresholds}`;
+                }).join("\n\n");
 
                 ctx.reply([
                     "I'm currently monitoring the following accounts. I'll send a notification if auto-repay is triggered, or if their account health drops to the set percentages:",
