@@ -49,7 +49,7 @@ export class Supabase {
 
     public async getMonitoredAccount(
         address: PublicKey
-    ): Promise<MonitoredAccount> {
+    ): Promise<MonitoredAccount | null> {
         return await retryWithBackoff(
             async () => {
                 const { data: account, error } = await this.supabase
@@ -68,7 +68,12 @@ export class Supabase {
                     .eq('address', address.toBase58())
                     .single();
 
-                if (error) throw error;
+                if (error) {
+                    if (error.code === "PGRST116") {
+                        return null; // No rows returned
+                    }
+                    throw error;
+                }
 
                 return {
                     address: new PublicKey(account.address),

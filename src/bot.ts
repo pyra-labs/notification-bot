@@ -6,14 +6,15 @@ import { QuartzClient, type QuartzUser, retryWithBackoff } from "@quartz-labs/sd
 import { AppLogger } from "@quartz-labs/logger";
 import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
-import { displayAddress } from "./utils/helpers.js";
+import { checkHasVaultHistory, displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
 import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "./config/errors.js";
+import type { Subscriber } from "./types/interfaces/subscriber.interface.js";
 
 export class HealthMonitorBot extends AppLogger {
     private telegram: Telegram;
     private supabase: Supabase;
-
+    private connection: Connection;
     private monitoredAccounts: Record<string, MonitoredAccount>;
     private monitoredAccountsInitialized: Promise<void>;
     private quartzClientPromise: Promise<QuartzClient>;
@@ -24,8 +25,8 @@ export class HealthMonitorBot extends AppLogger {
             dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
         });
 
-        const connection = new Connection(config.RPC_URL);
-        this.quartzClientPromise = QuartzClient.fetchClient(connection);
+        this.connection = new Connection(config.RPC_URL);
+        this.quartzClientPromise = QuartzClient.fetchClient(this.connection);
 
         this.telegram = new Telegram(
             this.subscribe.bind(this),
@@ -76,6 +77,7 @@ export class HealthMonitorBot extends AppLogger {
         }
 
         const updatedAccount = await this.supabase.getMonitoredAccount(address);
+        if (updatedAccount === null) throw new Error("Account not found");
         this.monitoredAccounts[address.toBase58()] = updatedAccount;
         
         this.logger.info(`${chatId} subscribed to ${address.toBase58()} with thresholds ${thresholds.join(", ")}`);
@@ -124,25 +126,26 @@ export class HealthMonitorBot extends AppLogger {
             const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold);
             await this.supabase.removeThreshold(thresholdId);
         }
+        this.logger.info(`${chatId} removed the thresholds ${thresholds.join(", ")} from ${address.toBase58()}`);   
 
         // Update local state
-        let noRemainingThresholds = true; 
-        const updatedAccounts = await this.getSubscriptions(chatId);
-        for (const account of updatedAccounts) {
-            this.monitoredAccounts[account.address.toBase58()] = account;
-            if (account.address.equals(address)) {
-                noRemainingThresholds = false; // If the account is still in the subscriptions, there are still thresholds
-            }
+        const updatedAccount = await this.supabase.getMonitoredAccount(address);
+        
+        if (updatedAccount === null) {
+            delete this.monitoredAccounts[address.toBase58()];
+            return true; // No remaining accounts
         }
 
-        this.logger.info(`${chatId} removed the thresholds ${thresholds.join(", ")} from ${address.toBase58()}`);   
+        this.monitoredAccounts[address.toBase58()] = updatedAccount;
+        
+        const remainingSubscription = updatedAccount.subscribers.find(subscriber => subscriber.chatId === chatId);
+        const noRemainingThresholds = (remainingSubscription === undefined);
         return noRemainingThresholds;
     }
 
     private async getSubscriptions(
         chatId: number
     ): Promise<MonitoredAccount[]> {
-        await this.monitoredAccountsInitialized;
         return this.supabase.getSubscriptions(chatId);
     }
 
@@ -175,7 +178,11 @@ export class HealthMonitorBot extends AppLogger {
                     async () => quartzClient.getMultipleQuartzAccounts(owners)
                 );
             } catch (error) {
-                this.logger.error(`Error fetching users: ${error}`);
+                if (error instanceof Error && error.message.includes("Account not found for pubkey")) {
+                    this.processDeletedAccount(owners);
+                } else {
+                    this.logger.error(`Error fetching users: ${error}`);
+                }
                 continue;
             }
 
@@ -200,56 +207,6 @@ export class HealthMonitorBot extends AppLogger {
             }
 
             await new Promise(resolve => setTimeout(resolve, LOOP_DELAY));
-        }
-    }
-
-    private async updateHealth(account: MonitoredAccount, health: number) {
-        await this.supabase.updateHealth(account.address, health);
-
-        const notifiedSubscribers = new Set<number>();
-        for (const subscriber of account.subscribers) {
-            const subscriberId = await this.supabase.getSubscriberId(account.address, subscriber.chatId);
-            let updatedData = false;
-            let notify = false;
-
-            for (const threshold of subscriber.thresholds) {
-                if (!threshold.notify) {
-                    if (health === 100 || health >= threshold.percentage + 5) {
-                        updatedData = true;
-
-                        // Enable notifications (has reached 5% above threshold)
-                        const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
-                        await this.supabase.updateThreshold(thresholdId, threshold.percentage, true);
-                    }
-                    continue;
-                }
-
-                if (health <= threshold.percentage) {
-                    updatedData = true;
-                    notify = true;
-
-                    // Disable notifications (until it rises 5% above)
-                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
-                    await this.supabase.updateThreshold(thresholdId, threshold.percentage, false);
-                }
-            }
-
-            if (!updatedData) continue;
-
-            const updatedAccount = await this.supabase.getMonitoredAccount(account.address);
-            this.monitoredAccounts[account.address.toBase58()] = updatedAccount;
-
-            if (notify) {
-                await this.telegram.sendMessage(
-                    subscriber.chatId,
-                    `🚨 Your account health (${displayAddress(account.address)}) has dropped to ${health}%.`
-                );
-                notifiedSubscribers.add(subscriber.chatId);
-            }
-        }
-
-        if (notifiedSubscribers.size > 0) {
-            this.logger.info(`Sent health notification for account ${account.address.toBase58()} to ${Array.from(notifiedSubscribers).join(", ")}`);
         }
     }
 
@@ -294,5 +251,96 @@ export class HealthMonitorBot extends AppLogger {
                 }
             }
         )
+    }
+
+    private async updateHealth(account: MonitoredAccount, health: number) {
+        await this.supabase.updateHealth(account.address, health);
+
+        const notifiedSubscribers = new Set<number>();
+        for (const subscriber of account.subscribers) {
+            const subscriberId = await this.supabase.getSubscriberId(account.address, subscriber.chatId);
+            let updatedData = false;
+            let notify = false;
+
+            for (const threshold of subscriber.thresholds) {
+                if (!threshold.notify) {
+                    if (health === 100 || health >= threshold.percentage + 5) {
+                        updatedData = true;
+
+                        // Enable notifications (has reached 5% above threshold)
+                        const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
+                        await this.supabase.updateThreshold(thresholdId, threshold.percentage, true);
+                    }
+                    continue;
+                }
+
+                if (health <= threshold.percentage) {
+                    updatedData = true;
+                    notify = true;
+
+                    // Disable notifications (until it rises 5% above)
+                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
+                    await this.supabase.updateThreshold(thresholdId, threshold.percentage, false);
+                }
+            }
+
+            if (!updatedData) continue;
+
+            const updatedAccount = await this.supabase.getMonitoredAccount(account.address);
+            if (updatedAccount === null) throw new Error("Account not found");
+            this.monitoredAccounts[account.address.toBase58()] = updatedAccount;
+
+            if (notify) {
+                await this.telegram.sendMessage(
+                    subscriber.chatId,
+                    `🚨 Your account health (${displayAddress(account.address)}) has dropped to ${health}%.`
+                );
+                notifiedSubscribers.add(subscriber.chatId);
+            }
+        }
+
+        if (notifiedSubscribers.size > 0) {
+            this.logger.info(`Sent health notification for account ${account.address.toBase58()} to ${Array.from(notifiedSubscribers).join(", ")}`);
+        }
+    }
+
+    private async processDeletedAccount(owners: PublicKey[]) {
+        for (const owner of owners) {
+            const doesUserExist = await QuartzClient.doesQuartzUserExist(this.connection, owner);
+            if (doesUserExist) continue;
+
+            const hasVaultHistory = await checkHasVaultHistory(this.connection, owner);
+            if (!hasVaultHistory) throw new Error("Account does not exist and has no previous history")
+
+            let account = await this.supabase.getMonitoredAccount(owner);
+            if (account === null) {
+                account = this.monitoredAccounts[owner.toBase58()] ?? null;
+                if (account === null) throw new Error("Already deleted");
+
+                for (const subscriber of account.subscribers) {
+                    this.notifyDeletedAccountSubscriber(subscriber, owner);
+                }
+                return;
+            } 
+            
+            for (const subscriber of account.subscribers) {
+                const subscriberId = await this.supabase.getSubscriberId(owner, subscriber.chatId);
+                const thresholds = await this.supabase.getThresholds(owner, subscriber.chatId);
+
+                for (const threshold of thresholds) {
+                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
+                    await this.supabase.removeThreshold(thresholdId);
+                }
+                this.notifyDeletedAccountSubscriber(subscriber, owner);
+            }
+        }
+    }
+
+    private async notifyDeletedAccountSubscriber(subscriber: Subscriber, owner: PublicKey) {
+        this.logger.info(`Sending deleted account notification for account ${owner} to ${subscriber.chatId}`);
+        await this.telegram.sendMessage(
+            subscriber.chatId,
+            `⚠️ The Quartz account for ${displayAddress(owner)} has been deleted. I'll remove this account from your monitored list.`
+        );
     }
 }
