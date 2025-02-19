@@ -1,5 +1,5 @@
 {
-  "name": "health-monitor-bot",
+  "name": "notification-bot",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -7,8 +7,8 @@
     "lint": "yarn biome lint --write",
     "build": "tsc -p tsconfig.json",
     "start": "yarn build && node dist/index.js",
-    "docker": "docker build -t health-monitor-bot .",
-    "docker:run": "docker run --env-file ./.env health-monitor-bot"
+    "docker": "docker build -t notification-bot .",
+    "docker:run": "docker run --env-file ./.env notification-bot"
   },
   "type": "module",
   "keywords": [],
