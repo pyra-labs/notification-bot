@@ -3,6 +3,6 @@ import type { Subscriber } from "./subscriber.interface.js";
 
 export interface MonitoredAccount {
     address: PublicKey;
-    lastHealth: number;
+    last_available_credit: number;
     subscribers: Subscriber[];
 }

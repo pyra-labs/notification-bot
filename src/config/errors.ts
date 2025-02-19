@@ -1,11 +1,12 @@
 import type { PublicKey } from "@solana/web3.js";
+import { centsToDollars } from "../utils/helpers.js";
 
 export class ExistingThresholdError extends Error {
-    public percentage: number;
+    public availableCredit: number;
 
-    constructor(percentage: number) {
-          super(`Threshold ${percentage}% already exists`);
-          this.percentage = percentage;
+    constructor(availableCredit: number) {
+          super(`Threshold ${centsToDollars(availableCredit)} already exists`);
+          this.availableCredit = availableCredit;
     }
 }
 

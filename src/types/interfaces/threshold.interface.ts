@@ -1,4 +1,4 @@
 export interface Threshold {
-    percentage: number;
+    available_credit: number;
     notify: boolean;
 }

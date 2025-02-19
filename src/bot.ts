@@ -2,16 +2,16 @@ import config from "./config/config.js";
 import { Telegram } from "./clients/telegram.client.js";
 import { Supabase } from "./clients/supabase.client.js";
 import type { MonitoredAccount } from "./types/interfaces/monitoredAccount.interface.js";
-import { QuartzClient, type QuartzUser, retryWithBackoff } from "@quartz-labs/sdk";
+import { MARKET_INDEX_USDC, QuartzClient, type QuartzUser, retryWithBackoff, TOKENS } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
 import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
-import { checkHasVaultHistory, displayAddress } from "./utils/helpers.js";
+import { centsToDollars, checkHasVaultHistory, displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
 import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "./config/errors.js";
 import type { Subscriber } from "./types/interfaces/subscriber.interface.js";
 
-export class HealthMonitorBot extends AppLogger {
+export class NotificationBot extends AppLogger {
     private telegram: Telegram;
     private supabase: Supabase;
     private connection: Connection;
@@ -19,9 +19,11 @@ export class HealthMonitorBot extends AppLogger {
     private monitoredAccountsInitialized: Promise<void>;
     private quartzClientPromise: Promise<QuartzClient>;
 
+    private loadedAnnouncement = "";
+
     constructor() {
         super({
-            name: "Health Monitor Bot",
+            name: "Notification Bot",
             dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
         });
 
@@ -29,6 +31,9 @@ export class HealthMonitorBot extends AppLogger {
         this.quartzClientPromise = QuartzClient.fetchClient(this.connection);
 
         this.telegram = new Telegram(
+            this.prepareAnnouncement.bind(this),
+            this.getAndClearAnnouncement.bind(this),
+            this.getAllChatIds.bind(this),
             this.subscribe.bind(this),
             this.unsubscribe.bind(this),
             this.getSubscriptions.bind(this)
@@ -36,6 +41,24 @@ export class HealthMonitorBot extends AppLogger {
         this.supabase = new Supabase();
         this.monitoredAccounts = {};
         this.monitoredAccountsInitialized = this.loadStoredAccounts();
+    }
+
+    private prepareAnnouncement(message: string) {
+        this.loadedAnnouncement = message;
+    }
+
+    private getAndClearAnnouncement(): string {
+        const message = this.loadedAnnouncement;
+        this.loadedAnnouncement = "";
+        return message;
+    }
+
+    private async getAllChatIds(): Promise<number[]> {
+        const monitoredAccounts = await this.supabase.getAllAccounts();
+        const subscriberChatIDs = monitoredAccounts.flatMap(
+            account => account.subscribers.map(subscriber => subscriber.chat_id)
+        );
+        return subscriberChatIDs;
     }
 
     private async loadStoredAccounts(): Promise<void> {
@@ -46,6 +69,12 @@ export class HealthMonitorBot extends AppLogger {
         }, {} as Record<string, MonitoredAccount>);
     }
 
+    private async getAvailableCredit(user: QuartzUser): Promise<number> {
+        const usdcBaseUnits = await user.getWithdrawalLimit(MARKET_INDEX_USDC, false);
+        const usdcDecimalPrecision = TOKENS[MARKET_INDEX_USDC].decimalPrecision.toNumber();
+        return Math.trunc(usdcBaseUnits / 10 ** (usdcDecimalPrecision - 2));
+    }
+
     private async subscribe(
         chatId: number, 
         address: PublicKey, 
@@ -53,13 +82,13 @@ export class HealthMonitorBot extends AppLogger {
     ): Promise<number> {
         await this.monitoredAccountsInitialized;
         const quartzClient = await this.quartzClientPromise;
-        let health: number;
+        let available_credit: number;
         try {
             const user = await retryWithBackoff(
                 async () => quartzClient.getQuartzAccount(address),
                 3
             );
-            health = user.getHealth();
+            available_credit = await this.getAvailableCredit(user);
         } catch {
             throw new UserNotFound(address);
         }
@@ -69,11 +98,12 @@ export class HealthMonitorBot extends AppLogger {
         }
 
         const existingThresholds = await this.getExitingThresholds(address, chatId);
+
         for (const threshold of thresholds) {
-            if (existingThresholds?.includes(threshold)) {
+            if (existingThresholds.includes(threshold)) {
                 throw new ExistingThresholdError(threshold);
             }
-            await this.supabase.subscribeToWallet(address, chatId, threshold, health);
+            await this.supabase.subscribeToWallet(address, chatId, threshold, available_credit);
         }
 
         const updatedAccount = await this.supabase.getMonitoredAccount(address);
@@ -81,7 +111,7 @@ export class HealthMonitorBot extends AppLogger {
         this.monitoredAccounts[address.toBase58()] = updatedAccount;
         
         this.logger.info(`${chatId} subscribed to ${address.toBase58()} with thresholds ${thresholds.join(", ")}`);
-        return updatedAccount.lastHealth;
+        return updatedAccount.last_available_credit;
     }
 
     private async unsubscribe(
@@ -111,7 +141,7 @@ export class HealthMonitorBot extends AppLogger {
         // Set thresholds to all thresholds if none provided
         if (!thresholds || thresholds.length === 0) {
             thresholds = await this.supabase.getThresholds(address, chatId)
-                .then(thresholds => thresholds.map(threshold => threshold.percentage));
+                .then(thresholds => thresholds.map(threshold => threshold.available_credit));
             if (!thresholds) {
                 throw new NoThresholdsError(address);
             }
@@ -138,7 +168,7 @@ export class HealthMonitorBot extends AppLogger {
 
         this.monitoredAccounts[address.toBase58()] = updatedAccount;
         
-        const remainingSubscription = updatedAccount.subscribers.find(subscriber => subscriber.chatId === chatId);
+        const remainingSubscription = updatedAccount.subscribers.find(subscriber => subscriber.chat_id === chatId);
         const noRemainingThresholds = (remainingSubscription === undefined);
         return noRemainingThresholds;
     }
@@ -152,9 +182,9 @@ export class HealthMonitorBot extends AppLogger {
     private async getExitingThresholds(address: PublicKey, chatId: number): Promise<number[]> {
         await this.monitoredAccountsInitialized;
         const monitoredAccount = await this.getSubscriptions(chatId)
-            .then(subs => subs.find(sub => sub.address.equals(address)))
-        const existingSubscription = monitoredAccount?.subscribers.find(subscriber => subscriber.chatId === chatId);
-        const thresholds = existingSubscription?.thresholds.map(threshold => threshold.percentage);
+            .then(subs => subs.find(sub => sub.address.equals(address)));
+        const existingSubscription = monitoredAccount?.subscribers.find(subscriber => subscriber.chat_id === chatId);
+        const thresholds = existingSubscription?.thresholds.map(threshold => threshold.available_credit);
         return thresholds ?? [];
     }
 
@@ -162,7 +192,7 @@ export class HealthMonitorBot extends AppLogger {
         const quartzClient = await this.quartzClientPromise;
         await this.monitoredAccountsInitialized;
         await this.setupAutoRepayListener();
-        this.logger.info(`Health Monitor Bot initialized with ${Object.keys(this.monitoredAccounts).length} accounts`);
+        this.logger.info(`Notification Bot initialized with ${Object.keys(this.monitoredAccounts).length} accounts`);
 
         setInterval(() => {
             this.logger.info(`[${new Date().toISOString()}] Heartbeat | Monitored accounts: ${this.monitoredAccounts.size}`);
@@ -197,10 +227,10 @@ export class HealthMonitorBot extends AppLogger {
                 }
 
                 try {
-                    const currentHealth = user.getHealth();
-                    if (currentHealth === entry.lastHealth) continue;
+                    const currentAvailableCredit = await this.getAvailableCredit(user);
+                    if (currentAvailableCredit === entry.last_available_credit) continue;
 
-                    await this.updateHealth(entry, currentHealth);
+                    await this.updateAvailableCredit(entry, currentAvailableCredit);
                 } catch (error) {
                     this.logger.error(`Error processing account ${entry.address.toBase58()}: ${error}`);
                 }
@@ -237,10 +267,10 @@ export class HealthMonitorBot extends AppLogger {
                         const notifiedSubscribers = new Set<number>();
                         for (const subscriber of monitoredAccount.subscribers) {
                             await this.telegram.sendMessage(
-                                subscriber.chatId,
+                                subscriber.chat_id,
                                 `💰 Your loans for account ${displayAddress(owner)} have automatically been repaid by selling your collateral at market rate.`
                             );
-                            notifiedSubscribers.add(subscriber.chatId);
+                            notifiedSubscribers.add(subscriber.chat_id);
                         }
                         this.logger.info(`Sending auto-repay notification for account ${owner} to ${Array.from(notifiedSubscribers).join(", ")}`);
                     } else if (!caller.equals(owner)) {
@@ -253,34 +283,34 @@ export class HealthMonitorBot extends AppLogger {
         )
     }
 
-    private async updateHealth(account: MonitoredAccount, health: number) {
-        await this.supabase.updateHealth(account.address, health);
+    private async updateAvailableCredit(account: MonitoredAccount, availableCredit: number) {
+        await this.supabase.updateAvailableCredit(account.address, availableCredit);
 
         const notifiedSubscribers = new Set<number>();
         for (const subscriber of account.subscribers) {
-            const subscriberId = await this.supabase.getSubscriberId(account.address, subscriber.chatId);
+            const subscriberId = await this.supabase.getSubscriberId(account.address, subscriber.chat_id);
             let updatedData = false;
             let notify = false;
 
             for (const threshold of subscriber.thresholds) {
                 if (!threshold.notify) {
-                    if (health === 100 || health >= threshold.percentage + 5) {
+                    if (availableCredit >= threshold.available_credit + 500) {
                         updatedData = true;
 
                         // Enable notifications (has reached 5% above threshold)
-                        const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
-                        await this.supabase.updateThreshold(thresholdId, threshold.percentage, true);
+                        const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.available_credit);
+                        await this.supabase.updateThreshold(thresholdId, threshold.available_credit, true);
                     }
                     continue;
                 }
 
-                if (health <= threshold.percentage) {
+                if (availableCredit <= threshold.available_credit) {
                     updatedData = true;
                     notify = true;
 
                     // Disable notifications (until it rises 5% above)
-                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
-                    await this.supabase.updateThreshold(thresholdId, threshold.percentage, false);
+                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.available_credit);
+                    await this.supabase.updateThreshold(thresholdId, threshold.available_credit, false);
                 }
             }
 
@@ -292,15 +322,15 @@ export class HealthMonitorBot extends AppLogger {
 
             if (notify) {
                 await this.telegram.sendMessage(
-                    subscriber.chatId,
-                    `🚨 Your account health (${displayAddress(account.address)}) has dropped to ${health}%.`
+                    subscriber.chat_id,
+                    `🚨 Your available credit (${displayAddress(account.address)}) has dropped to ${centsToDollars(availableCredit)}.`
                 );
-                notifiedSubscribers.add(subscriber.chatId);
+                notifiedSubscribers.add(subscriber.chat_id);
             }
         }
 
         if (notifiedSubscribers.size > 0) {
-            this.logger.info(`Sent health notification for account ${account.address.toBase58()} to ${Array.from(notifiedSubscribers).join(", ")}`);
+            this.logger.info(`Sent available credit notification for account ${account.address.toBase58()} to ${Array.from(notifiedSubscribers).join(", ")}`);
         }
     }
 
@@ -324,11 +354,11 @@ export class HealthMonitorBot extends AppLogger {
             } 
             
             for (const subscriber of account.subscribers) {
-                const subscriberId = await this.supabase.getSubscriberId(owner, subscriber.chatId);
-                const thresholds = await this.supabase.getThresholds(owner, subscriber.chatId);
+                const subscriberId = await this.supabase.getSubscriberId(owner, subscriber.chat_id);
+                const thresholds = await this.supabase.getThresholds(owner, subscriber.chat_id);
 
                 for (const threshold of thresholds) {
-                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.percentage);
+                    const thresholdId = await this.supabase.getThresholdId(subscriberId, threshold.available_credit);
                     await this.supabase.removeThreshold(thresholdId);
                 }
                 this.notifyDeletedAccountSubscriber(subscriber, owner);
@@ -337,9 +367,9 @@ export class HealthMonitorBot extends AppLogger {
     }
 
     private async notifyDeletedAccountSubscriber(subscriber: Subscriber, owner: PublicKey) {
-        this.logger.info(`Sending deleted account notification for account ${owner} to ${subscriber.chatId}`);
+        this.logger.info(`Sending deleted account notification for account ${owner} to ${subscriber.chat_id}`);
         await this.telegram.sendMessage(
-            subscriber.chatId,
+            subscriber.chat_id,
             `⚠️ The Quartz account for ${displayAddress(owner)} has been deleted. I'll remove this account from your monitored list.`
         );
     }

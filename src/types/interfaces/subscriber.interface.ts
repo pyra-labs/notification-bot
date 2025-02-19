@@ -1,6 +1,6 @@
 import type { Threshold } from "./threshold.interface.js";
 
 export interface Subscriber {
-    chatId: number;
+    chat_id: number;
     thresholds: Threshold[];
 }

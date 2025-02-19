@@ -5,6 +5,7 @@ import { PublicKey } from "@solana/web3.js";
 import { retryWithBackoff } from "@quartz-labs/sdk";
 import type { MonitoredAccount } from "../types/interfaces/monitoredAccount.interface.js";
 import type { Threshold } from "../types/interfaces/threshold.interface.js";
+import type { Subscriber } from "../types/interfaces/subscriber.interface.js";
 
 export class Supabase {
     public supabase: SupabaseClient<Database>;
@@ -23,25 +24,22 @@ export class Supabase {
                     .from('accounts')
                     .select(`
                         address,
-                        last_health,
+                        last_available_credit,
                         subscribers (
                             chat_id,
                             thresholds (
-                                percentage,
+                                available_credit,
                                 notify
                             )
                         )
                     `);
 
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
                 
                 return accounts.map(account => ({
                     address: new PublicKey(account.address),
-                    lastHealth: account.last_health,
-                    subscribers: account.subscribers.map(sub => ({
-                        chatId: sub.chat_id,
-                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
-                    }))
+                    last_available_credit: account.last_available_credit,
+                    subscribers: account.subscribers.map(subscriber => subscriber as Subscriber)
                 }));
             }
         );
@@ -56,11 +54,11 @@ export class Supabase {
                     .from('accounts')
                     .select(`
                         address,
-                        last_health,
+                        last_available_credit,
                         subscribers (
                             chat_id,
                             thresholds (
-                                percentage,
+                                available_credit,
                                 notify
                             )
                         )
@@ -72,16 +70,13 @@ export class Supabase {
                     if (error.code === "PGRST116") {
                         return null; // No rows returned
                     }
-                    throw error;
+                    throw new Error(JSON.stringify(error));
                 }
 
                 return {
                     address: new PublicKey(account.address),
-                    lastHealth: account.last_health,
-                    subscribers: account.subscribers.map(sub => ({
-                        chatId: sub.chat_id,
-                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
-                    }))
+                    last_available_credit: account.last_available_credit,
+                    subscribers: account.subscribers.map(subscriber => subscriber as Subscriber)
                 };
             }
         );
@@ -96,25 +91,22 @@ export class Supabase {
                     .from('accounts')
                     .select(`
                         address,
-                        last_health,
+                        last_available_credit,
                         subscribers!inner (
                             chat_id,
                             thresholds (
-                                percentage,
+                                available_credit,
                                 notify
                             )
                         )
                     `)
                     .eq('subscribers.chat_id', chatId);
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
                 
                 return accounts.map(account => ({
                     address: new PublicKey(account.address),
-                    lastHealth: account.last_health,
-                    subscribers: account.subscribers.map(sub => ({
-                        chatId: sub.chat_id,
-                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
-                    }))
+                    last_available_credit: account.last_available_credit,
+                    subscribers: account.subscribers.map(subscriber => subscriber as Subscriber)
                 }));
             }
         );
@@ -130,7 +122,7 @@ export class Supabase {
                     .from('subscribers')
                     .select(`
                         thresholds (
-                            percentage, 
+                            available_credit, 
                             notify
                         )
                     `)
@@ -138,7 +130,7 @@ export class Supabase {
                     .eq('chat_id', chatId)
                     .single();
                 
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
                 return data.thresholds;
             }
         );
@@ -146,21 +138,19 @@ export class Supabase {
 
     public async subscribeToWallet(
         address: PublicKey, 
-        chatId: number, 
+        chat_id: number, 
         threshold: number, 
-        health: number
+        available_credit: number
     ) {
-        if (threshold < 0 || threshold > 100) throw new Error("Threshold must be between 0 and 100");
-
         await retryWithBackoff(
             async () => {
                 const { error } = await this.supabase.rpc('subscribe_to_wallet', {
                     p_address: address.toBase58(),
-                    p_chat_id: chatId,
+                    p_chat_id: chat_id,
                     p_threshold: threshold,
-                    p_last_health: health
+                    p_last_available_credit: available_credit
                 });    
-                if (error) throw new Error(error.message);
+                if (error) throw new Error(JSON.stringify(error));
             }
         )
     }
@@ -171,65 +161,60 @@ export class Supabase {
                 const { error } = await this.supabase.rpc('remove_threshold', {
                     p_threshold_id: thresholdId
                 });
-                if (error) throw new Error(error.message);
+                if (error) throw new Error(JSON.stringify(error));
             }
         )
     }
 
     public async updateThreshold(
         thresholdId: number, 
-        percentage: number, 
+        available_credit: number, 
         notify: boolean
     ) {
-        if (percentage < 0 || percentage > 100) throw new Error("Threshold must be between 0 and 100");
-
         await retryWithBackoff(
             async () => {
                 const { error } = await this.supabase
                     .from('thresholds')
                     .update({ 
-                        percentage,
+                        available_credit,
                         notify
                     })
                     .eq('id', thresholdId)
                     .select()
                     .single();
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
             }
         )
     }
 
-    public async updateHealth(
+    public async updateAvailableCredit(
         address: PublicKey, 
-        health: number
+        available_credit: number
     ): Promise<MonitoredAccount> {
         return await retryWithBackoff(
             async () => {
                 const { data: account, error } = await this.supabase
                     .from('accounts')
-                    .update({ last_health: health })
+                    .update({ last_available_credit: available_credit })
                     .eq('address', address.toBase58())
                     .select(`
                         address,
-                        last_health,
+                        last_available_credit,
                         subscribers (
                             chat_id,
                             thresholds (
-                                percentage,
+                                available_credit,
                                 notify
                             )
                         )
                     `)
                     .single();
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
 
                 return {
                     address: new PublicKey(account.address),
-                    lastHealth: account.last_health,
-                    subscribers: account.subscribers.map(sub => ({
-                        chatId: sub.chat_id,
-                        thresholds: sub.thresholds.map(threshold => threshold as Threshold)
-                    }))
+                    last_available_credit: account.last_available_credit,
+                    subscribers: account.subscribers.map(subscriber => subscriber as Subscriber)
                 };
             }
         )
@@ -248,7 +233,7 @@ export class Supabase {
                     .eq('chat_id', chatId)
                     .single();
 
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
                 return data.id;
             }
         )
@@ -256,20 +241,18 @@ export class Supabase {
 
     public async getThresholdId(
         subscriberId: number, 
-        percentage: number
+        available_credit: number
     ): Promise<number> {
-        if (percentage < 0 || percentage > 100) throw new Error("Threshold must be between 0 and 100");
-
         return await retryWithBackoff(
             async () => {
                 const { data, error } = await this.supabase
                     .from('thresholds')
                     .select('id')
                     .eq('subscriber_id', subscriberId)
-                    .eq('percentage', percentage)
+                    .eq('available_credit', available_credit)
                     .single();
 
-                if (error) throw error;
+                if (error) throw new Error(JSON.stringify(error));
                 return data.id;
             }
         )

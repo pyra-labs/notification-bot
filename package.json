@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@quartz-labs/logger": "1.0.3",
-    "@quartz-labs/sdk": "0.4.3",
+    "@quartz-labs/sdk": "0.6.4",
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",

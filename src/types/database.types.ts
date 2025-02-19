@@ -38,18 +38,21 @@ export type Database = {
         Row: {
           address: string
           created_at: string
+          last_available_credit: number
           last_health: number
           updated_at: string
         }
         Insert: {
           address: string
           created_at?: string
+          last_available_credit?: number
           last_health: number
           updated_at?: string
         }
         Update: {
           address?: string
           created_at?: string
+          last_available_credit?: number
           last_health?: number
           updated_at?: string
         }
@@ -86,24 +89,24 @@ export type Database = {
       }
       thresholds: {
         Row: {
+          available_credit: number
           created_at: string
           id: number
           notify: boolean
-          percentage: number
           subscriber_id: number
         }
         Insert: {
+          available_credit?: number
           created_at?: string
           id?: number
           notify?: boolean
-          percentage: number
           subscriber_id: number
         }
         Update: {
+          available_credit?: number
           created_at?: string
           id?: number
           notify?: boolean
-          percentage?: number
           subscriber_id?: number
         }
         Relationships: [
@@ -158,7 +161,7 @@ export type Database = {
               p_address: string
               p_chat_id: number
               p_threshold: number
-              p_last_health: number
+              p_last_available_credit: number
             }
             Returns: Json
           }

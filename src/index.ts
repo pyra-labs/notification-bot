@@ -1,4 +1,4 @@
-import { HealthMonitorBot } from "./bot.js";
+import { NotificationBot } from "./bot.js";
 
-const bot = new HealthMonitorBot();
+const bot = new NotificationBot();
 bot.start();
