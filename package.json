@@ -7,7 +7,7 @@
     "lint": "yarn biome lint --write",
     "build": "tsc -p tsconfig.json",
     "start": "yarn build && node dist/index.js",
-    "docker": "docker build -t notification-bot .",
+    "docker": "docker build --platform linux/amd64 -t notification-bot .",
     "docker:run": "docker run --env-file ./.env notification-bot"
   },
   "type": "module",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@quartz-labs/logger": "1.0.3",
-    "@quartz-labs/sdk": "0.6.4",
+    "@quartz-labs/sdk": "0.9.5",
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
