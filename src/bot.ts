@@ -4,7 +4,7 @@ import { Supabase } from "./clients/supabase.client.js";
 import type { MonitoredAccount } from "./types/interfaces/monitoredAccount.interface.js";
 import { MARKET_INDEX_USDC, QuartzClient, type QuartzUser, retryWithBackoff, TOKENS } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
-import { Connection, type MessageCompiledInstruction } from "@solana/web3.js";
+import { Connection, type MessageCompiledInstruction, type VersionedTransactionResponse } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import { centsToDollars, checkHasVaultHistory, displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
@@ -245,37 +245,31 @@ export class NotificationBot extends AppLogger {
 
         const INSRTUCTION_NAME = "StartCollateralRepay";
         const ACCOUNT_INDEX_OWNER = 3;
-        const ACCOUNT_INDEX_CALLER = 0;
 
         quartzClient.listenForInstruction(
             INSRTUCTION_NAME,
-            async (instruction: MessageCompiledInstruction, accountKeys: PublicKey[]) => {
+            async (tx: VersionedTransactionResponse, ix: MessageCompiledInstruction, accountKeys: PublicKey[]) => {
                 try {
-                    const callerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_CALLER];
-                    if (callerIndex === undefined || accountKeys[callerIndex] === undefined) return;
-                    const caller = accountKeys[callerIndex];
-                    
-                    const ownerIndex = instruction.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
+                    const ownerIndex = ix.accountKeyIndexes?.[ACCOUNT_INDEX_OWNER];
                     if (ownerIndex === undefined || accountKeys[ownerIndex] === undefined) return;
                     const owner = accountKeys[ownerIndex];
 
                     const monitoredAccount = this.monitoredAccounts[owner.toBase58()];
+                    if (!monitoredAccount) return;
 
-                    if (monitoredAccount) {
-                        if (caller.equals(owner)) return;
-
-                        const notifiedSubscribers = new Set<number>();
-                        for (const subscriber of monitoredAccount.subscribers) {
-                            await this.telegram.sendMessage(
-                                subscriber.chat_id,
-                                `💰 Your loans for account ${displayAddress(owner)} have automatically been repaid by selling your collateral at market rate.`
-                            );
-                            notifiedSubscribers.add(subscriber.chat_id);
-                        }
-                        this.logger.info(`Sending auto-repay notification for account ${owner} to ${Array.from(notifiedSubscribers).join(", ")}`);
-                    } else if (!caller.equals(owner)) {
-                        this.logger.info(`Detected auto-repay for unmonitored account ${owner}`);
+                    if (tx.transaction.message.isAccountSigner(ownerIndex)) {
+                        return;
                     }
+
+                    const notifiedSubscribers = new Set<number>();
+                    for (const subscriber of monitoredAccount.subscribers) {
+                        await this.telegram.sendMessage(
+                            subscriber.chat_id,
+                            `💰 Your loans for account ${displayAddress(owner)} have automatically been repaid by selling your collateral at market rate.`
+                        );
+                        notifiedSubscribers.add(subscriber.chat_id);
+                    }
+                    this.logger.info(`Sending auto-repay notification for account ${owner} to ${Array.from(notifiedSubscribers).join(", ")}`);
                 } catch (error) {
                     this.logger.error(`Error processing collateral repay instruction: ${error}`);
                 }
