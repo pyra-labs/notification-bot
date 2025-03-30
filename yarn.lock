@@ -146,10 +146,10 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@drift-labs/sdk@^2.114.0-beta.3":
-  version "2.114.0-beta.7"
-  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.114.0-beta.7.tgz#a2b51e02c0dff49562998069e1759a0d7717cdd8"
-  integrity sha512-RBXF9XoiqRqtnKr/k0ranO2R61ziHeRS7LDF0aeICe6grM4L2mCLv2ozbStoJnW56Oy34oPToakWpoq5xkpUxQ==
+"@drift-labs/sdk@2.117.0-beta.8":
+  version "2.117.0-beta.8"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.117.0-beta.8.tgz#24e0b979186c4b6724d1b01985dc6f8937e75c98"
+  integrity sha512-IO1I3DkTj0ZZGP1W2Y+vPDRBtzXP/R7gKzQ09AOJeEPROJIL/8x40MLibBePRXf8ap8kGMnUOJ2mdxQUegiImA==
   dependencies:
     "@coral-xyz/anchor" "0.29.0"
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
@@ -162,7 +162,7 @@
     "@pythnetwork/pyth-solana-receiver" "0.7.0"
     "@solana/spl-token" "0.3.7"
     "@solana/web3.js" "1.92.3"
-    "@switchboard-xyz/on-demand" "2.2.0"
+    "@switchboard-xyz/on-demand" "2.4.0"
     "@triton-one/yellowstone-grpc" "1.3.0"
     anchor-bankrun "0.3.0"
     nanoid "3.3.4"
@@ -610,13 +610,13 @@
     winston "^3.17.0"
     zod "^3.24.1"
 
-"@quartz-labs/sdk@0.12.7":
-  version "0.12.7"
-  resolved "https://registry.yarnpkg.com/@quartz-labs/sdk/-/sdk-0.12.7.tgz#f81b33455a116b116f714be39c726242c52e0314"
-  integrity sha512-8BJyWYrD34TAgAjDge5G18O8TTbm6yO719Miq6oNniLPzQ8P/RRzCcCNeTT9NhTcBtQgWKlBEgx4X6MBDCkCIg==
+"@quartz-labs/sdk@0.12.9":
+  version "0.12.9"
+  resolved "https://registry.yarnpkg.com/@quartz-labs/sdk/-/sdk-0.12.9.tgz#317c03c0659c73f29e2abaa92b23635a745d8e4d"
+  integrity sha512-FLrQl2yyCUXQ1DiCO4Hb+7xs9sJlurXNcHEcArKd/ClLfE5tMxcvO0OQ0IxlrsH415wzn11gDq9MNwJsuMnFAg==
   dependencies:
     "@coral-xyz/anchor" "^0.29.0"
-    "@drift-labs/sdk" "^2.114.0-beta.3"
+    "@drift-labs/sdk" "2.117.0-beta.8"
     "@jup-ag/api" "6.0.30"
     "@pythnetwork/pyth-solana-receiver" "^0.9.1"
     "@solana/spl-token" "^0.4.9"
@@ -854,7 +854,7 @@
   dependencies:
     tslib "^2.8.0"
 
-"@switchboard-xyz/common@^3":
+"@switchboard-xyz/common@>=3.0.0":
   version "3.0.12"
   resolved "https://registry.yarnpkg.com/@switchboard-xyz/common/-/common-3.0.12.tgz#02b77322a2cacf91c0f69c86007654a0d0a20fbb"
   integrity sha512-SA+KEqM25rk+jYWVyiPrK3VaTajr38dPB1Hni+4AOCw7YUDNoM3JrTx8frZcj10ILzdHP3odAiUgxmulhZionQ==
@@ -870,15 +870,15 @@
     protobufjs "^7.4.0"
     yaml "^2.6.1"
 
-"@switchboard-xyz/on-demand@2.2.0":
-  version "2.2.0"
-  resolved "https://registry.yarnpkg.com/@switchboard-xyz/on-demand/-/on-demand-2.2.0.tgz#543dd8cba68cdf02838da6c427f0c0709875154b"
-  integrity sha512-3WOyvJW9kSnu2qC3sFczcx0XhC170A3E1LaEQVdRcLjmeWkLtTbhnxP7hKSJA+Y83MNdAfyGH0F8Eix/NmaagA==
+"@switchboard-xyz/on-demand@2.4.0":
+  version "2.4.0"
+  resolved "https://registry.yarnpkg.com/@switchboard-xyz/on-demand/-/on-demand-2.4.0.tgz#adb5beaa113fcf3729ffa40bc30f7369900817c2"
+  integrity sha512-TtBw4CceI44NIWLJzHKTRdSqgIHr34UxUxRhp0r0P7Y1peIXgeJpmzx2Na18dH2XjcsTRcN/5U9Kdfm5bdf0+A==
   dependencies:
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
     "@isaacs/ttlcache" "^1.4.1"
-    "@switchboard-xyz/common" "^3"
-    axios "^1.8.1"
+    "@switchboard-xyz/common" ">=3.0.0"
+    axios "^1.8.3"
     bs58 "^6.0.0"
     buffer "^6.0.3"
     js-yaml "^4.1.0"
@@ -1128,7 +1128,7 @@ available-typed-arrays@^1.0.7:
   dependencies:
     possible-typed-array-names "^1.0.0"
 
-axios@^1.8.1, axios@^1.8.3:
+axios@^1.8.3:
   version "1.8.4"
   resolved "https://registry.yarnpkg.com/axios/-/axios-1.8.4.tgz#78990bb4bc63d2cae072952d374835950a82f447"
   integrity sha512-eBSYY4Y68NNlHbHBMdeDmKNtDgXWhQsJcGqzO3iLUM0GraQFSS9cVgPX5I9b3lbdFKyYoAEGAZF1DwhTaljNAw==
