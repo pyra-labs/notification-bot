@@ -144,7 +144,7 @@ export class Telegram extends AppLogger {
                         await this.reply(ctx, `Error: Threshold ${centsToDollars(error.availableCredit)} already exists for ${displayAddress(address)}`);
                     } else {
                         await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                        this.logger.error(error);
+                        this.logger.error(JSON.stringify(error));
                         return;
                     }
                 }
@@ -169,7 +169,7 @@ export class Telegram extends AppLogger {
                             await this.reply(ctx, "I'm not currently monitoring any accounts. Use /help /track to see how to add one.");
                         } else {
                             await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                            this.logger.error(error);
+                            this.logger.error(JSON.stringify(error));
                             return;
                         }
                     }
@@ -189,7 +189,7 @@ export class Telegram extends AppLogger {
                             await this.reply(ctx, `I'm not currently monitoring any thresholds for ${displayAddress(address)}. Use /help /track to see how to add one.`);
                         } else {
                             await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                            this.logger.error(error);
+                            this.logger.error(JSON.stringify(error));
                             return;
                         }
                     }
@@ -218,7 +218,7 @@ export class Telegram extends AppLogger {
                         await this.reply(ctx, `Error: ${error.message} for ${displayAddress(address)}`);
                     } else {
                         await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                        this.logger.error(error);
+                        this.logger.error(JSON.stringify(error));
                         return;
                     }
                 }
@@ -233,7 +233,7 @@ export class Telegram extends AppLogger {
                     list = await getSubscriptions(ctx.chat.id);
                 } catch (error) {
                     await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                    this.logger.error(error);
+                    this.logger.error(JSON.stringify(error));
                     return;
                 }
 
@@ -261,7 +261,7 @@ export class Telegram extends AppLogger {
                     }).join("\n\n");
                 } catch (error) {
                     await this.reply(ctx, "Sorry, something went wrong. I've notified the team and we'll look into it ASAP.");
-                    this.logger.error(error);
+                    this.logger.error(JSON.stringify(error));
                     return;
                 }
 
@@ -330,7 +330,7 @@ export class Telegram extends AppLogger {
             } else if (err.error instanceof HttpError) {
                 this.logger.error(`[${chatId}] ${updateId} >> Could not contact Telegram: ${err.error}:`);
             } else {
-                this.logger.error(`[${chatId}] ${updateId} >> Unknown error: ${err.error}:`);
+                this.logger.error(`[${chatId}] ${updateId} >> Unknown error: ${JSON.stringify(err.error)}`);
             }
         }).bind(this));
 
@@ -377,7 +377,7 @@ export class Telegram extends AppLogger {
                 () => this.api.sendMessage(chatId, text)
             );
         } catch (error) {
-            this.logger.error(`Error sending message to ${chatId} "${text}"... Error: ${error}`);
+            this.logger.error(`Error sending message to ${chatId} "${text}"... Error: ${JSON.stringify(error)}`);
             return;
         }
     }

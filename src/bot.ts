@@ -211,7 +211,7 @@ export class NotificationBot extends AppLogger {
                 if (error instanceof Error && error.message.includes("Account not found for pubkey")) {
                     this.processDeletedAccount(owners);
                 } else {
-                    this.logger.error(`Error fetching users: ${error}`);
+                    this.logger.error(`Error fetching users: ${JSON.stringify(error)}`);
                 }
                 continue;
             }
@@ -232,7 +232,7 @@ export class NotificationBot extends AppLogger {
 
                     await this.updateAvailableCredit(entry, currentAvailableCredit);
                 } catch (error) {
-                    this.logger.error(`Error processing account ${entry.address.toBase58()}: ${error}`);
+                    this.logger.error(`Error processing account ${entry.address.toBase58()}: ${JSON.stringify(error)}`);
                 }
             }
 
@@ -271,7 +271,7 @@ export class NotificationBot extends AppLogger {
                     }
                     this.logger.info(`Sending auto-repay notification for account ${owner} to ${Array.from(notifiedSubscribers).join(", ")}`);
                 } catch (error) {
-                    this.logger.error(`Error processing collateral repay instruction: ${error}`);
+                    this.logger.error(`Error processing collateral repay instruction: ${JSON.stringify(error)}`);
                 }
             }
         )
