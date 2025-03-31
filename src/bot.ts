@@ -103,13 +103,14 @@ export class NotificationBot extends AppLogger {
             if (existingThresholds.includes(threshold)) {
                 throw new ExistingThresholdError(threshold);
             }
+            this.logger.info(`Subscribing with threshold ${threshold}`);
             await this.supabase.subscribeToWallet(address, chatId, threshold, available_credit);
         }
 
         const updatedAccount = await this.supabase.getMonitoredAccount(address);
         if (updatedAccount === null) throw new Error("Account not found");
         this.monitoredAccounts[address.toBase58()] = updatedAccount;
-        
+
         this.logger.info(`${chatId} subscribed to ${address.toBase58()} with thresholds ${thresholds.join(", ")}`);
         return updatedAccount.last_available_credit;
     }

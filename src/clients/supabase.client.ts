@@ -34,7 +34,7 @@ export class Supabase {
                         )
                     `);
 
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
                 
                 return accounts.map(account => ({
                     address: new PublicKey(account.address),
@@ -70,7 +70,7 @@ export class Supabase {
                     if (error.code === "PGRST116") {
                         return null; // No rows returned
                     }
-                    throw new Error(JSON.stringify(error));
+                    throw error;
                 }
 
                 return {
@@ -101,7 +101,7 @@ export class Supabase {
                         )
                     `)
                     .eq('subscribers.chat_id', chatId);
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
                 
                 return accounts.map(account => ({
                     address: new PublicKey(account.address),
@@ -130,7 +130,7 @@ export class Supabase {
                     .eq('chat_id', chatId)
                     .single();
                 
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
                 return data.thresholds;
             }
         );
@@ -150,7 +150,7 @@ export class Supabase {
                     p_threshold: threshold,
                     p_last_available_credit: available_credit
                 });    
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
             }
         )
     }
@@ -161,7 +161,7 @@ export class Supabase {
                 const { error } = await this.supabase.rpc('remove_threshold', {
                     p_threshold_id: thresholdId
                 });
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
             }
         )
     }
@@ -182,7 +182,7 @@ export class Supabase {
                     .eq('id', thresholdId)
                     .select()
                     .single();
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
             }
         )
     }
@@ -209,7 +209,7 @@ export class Supabase {
                         )
                     `)
                     .single();
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
 
                 return {
                     address: new PublicKey(account.address),
@@ -233,7 +233,7 @@ export class Supabase {
                     .eq('chat_id', chatId)
                     .single();
 
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
                 return data.id;
             }
         )
@@ -252,7 +252,7 @@ export class Supabase {
                     .eq('available_credit', available_credit)
                     .single();
 
-                if (error) throw new Error(JSON.stringify(error));
+                if (error) throw error;
                 return data.id;
             }
         )
