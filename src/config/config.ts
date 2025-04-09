@@ -7,7 +7,7 @@ const envSchema = z.object({
     RPC_URL: z.string().url(),
     TG_API_KEY: z.string(),
     SUPABASE_URL: z.string().url(),
-    SUPABASE_KEY: z.string(),
+    SUPABASE_KEY_CARD: z.string(),
     EMAIL_TO: z.string()
         .transform((str) => {
             try {

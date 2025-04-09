@@ -13,7 +13,7 @@ export class Supabase {
     constructor() {
         this.supabase = createClient<Database>(
             config.SUPABASE_URL,
-            config.SUPABASE_KEY
+            config.SUPABASE_KEY_CARD
         );
     }
 
