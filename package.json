@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@quartz-labs/logger": "1.0.3",
-    "@quartz-labs/sdk": "0.12.9",
+    "@quartz-labs/sdk": "0.15.0",
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
@@ -44,5 +44,6 @@
   "resolutions": {
     "rpc-websockets": "^9.0.2",
     "@solana/web3.js": "^1.95.8"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
