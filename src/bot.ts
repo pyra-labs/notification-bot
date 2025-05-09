@@ -4,17 +4,18 @@ import { Supabase } from "./clients/supabase.client.js";
 import type { MonitoredAccount } from "./types/interfaces/monitoredAccount.interface.js";
 import { MARKET_INDEX_USDC, QuartzClient, type QuartzUser, retryWithBackoff, TOKENS } from "@quartz-labs/sdk";
 import { AppLogger } from "@quartz-labs/logger";
-import { Connection, type MessageCompiledInstruction, type VersionedTransactionResponse } from "@solana/web3.js";
+import type { MessageCompiledInstruction, VersionedTransactionResponse } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import { centsToDollars, checkHasVaultHistory, displayAddress } from "./utils/helpers.js";
 import { LOOP_DELAY } from "./config/constants.js";
 import { ExistingThresholdError, NoThresholdsError, ThresholdNotFoundError, UserNotFound } from "./config/errors.js";
 import type { Subscriber } from "./types/interfaces/subscriber.interface.js";
+import AdvancedConnection from "@quartz-labs/connection";
 
 export class NotificationBot extends AppLogger {
     private telegram: Telegram;
     private supabase: Supabase;
-    private connection: Connection;
+    private connection: AdvancedConnection  ;
     private monitoredAccounts: Record<string, MonitoredAccount>;
     private monitoredAccountsInitialized: Promise<void>;
     private quartzClientPromise: Promise<QuartzClient>;
@@ -27,8 +28,8 @@ export class NotificationBot extends AppLogger {
             dailyErrorCacheTimeMs: 1000 * 60 * 60 // 1 hour
         });
 
-        this.connection = new Connection(config.RPC_URL);
-        this.quartzClientPromise = QuartzClient.fetchClient(this.connection);
+        this.connection = new AdvancedConnection(config.RPC_URLS);
+        this.quartzClientPromise = QuartzClient.fetchClient({connection: this.connection});
 
         this.telegram = new Telegram(
             this.prepareAnnouncement.bind(this),

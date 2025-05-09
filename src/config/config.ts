@@ -4,7 +4,16 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
-    RPC_URL: z.string().url(),
+    RPC_URLS: z.string()
+        .transform((str) => {
+            try {
+                const urls = str.split(',').map(url => url.trim());
+                if (!urls.every(url => url.startsWith("https"))) throw new Error();
+                return urls;
+            } catch {
+                throw new Error("Invalid RPC_URLS format: must be comma-separated URLs starting with https");
+            }
+        }),
     TG_API_KEY: z.string(),
     SUPABASE_URL: z.string().url(),
     SUPABASE_KEY_TG: z.string(),
