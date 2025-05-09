@@ -26,8 +26,9 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@quartz-labs/connection": "^2.0.0",
     "@quartz-labs/logger": "1.0.3",
-    "@quartz-labs/sdk": "0.16.4",
+    "@quartz-labs/sdk": "0.19.1",
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.46.1",
     "@types/ws": "^8.5.10",
